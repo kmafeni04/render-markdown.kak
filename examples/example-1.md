@@ -47,7 +47,6 @@ int main(){
 
 > ------
 
-
 ## Block Quotes
 
 > This is a block quote
