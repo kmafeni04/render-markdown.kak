@@ -13,7 +13,7 @@ provide-module render-markdown %{
   declare-option str render_markdown_codeblock_end " "
 
   declare-option str render_markdown_checkbox_checked "{yellow+f}󰱒 "
-  declare-option str render_markdown_checkbox_unchecked "{yellow+f}󰄱  "
+  declare-option str render_markdown_checkbox_unchecked "{yellow+f}󰄱 "
 
   declare-option str render_markdown_bullet "{yellow+f} "
 
@@ -128,10 +128,10 @@ provide-module render-markdown %{
                 if [ -n "$(printf '%s' "$kak_selection" | grep -Po -- '-\s\[')" ]; then
                   if [ -n "$(printf '%s' "$kak_selection" | grep -o x)" ]; then
                     printf "set-option -add window _render_markdown_bare_ranges '%s'\n" \
-                      "$kak_selection_desc|$kak_opt_render_markdown_checkbox_checked "
+                      "$kak_selection_desc|$kak_opt_render_markdown_checkbox_checked"
                   else
                     printf "set-option -add window _render_markdown_bare_ranges '%s'\n" \
-                      "$kak_selection_desc|$kak_opt_render_markdown_checkbox_checked "
+                      "$kak_selection_desc|$kak_opt_render_markdown_checkbox_unchecked"
                   fi
                 else
                   printf "set-option -add window _render_markdown_bare_ranges '%s'\n" "$kak_selection_desc|$kak_opt_render_markdown_bullet"
