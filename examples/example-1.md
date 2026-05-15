@@ -15,6 +15,10 @@ This is `text` with inline `code`
 
 ## Code blocks
 
+```
+# Headers will still show in blocks that dont have a defined language
+```
+
 ```lua
 print("Hello, world\n")
 ```
@@ -79,5 +83,3 @@ int main(){
 _italic_
 **bold**
 __bold__
-
-
