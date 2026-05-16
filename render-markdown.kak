@@ -297,7 +297,7 @@ provide-module render-markdown %{
             execute-keys "s`[^`\n]+`[^`]<ret>H"
             evaluate-commands -itersel %{
               evaluate-commands %sh{
-                content="$(printf '%s' "$kak_selection" | sed "s/`//g;s/'/\'\'/g")"
+                content="$(printf '%s' "$kak_selection" | sed "s/\`//g;s/'/\'\'/g")"
                 printf "set-option -add window _render_markdown_bare_ranges '%s'\n" \
                   "$kak_selection_desc|${kak_opt_render_markdown_inline_code}${content}"
               }
