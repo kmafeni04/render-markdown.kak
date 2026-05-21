@@ -64,7 +64,7 @@ provide-module render-markdown %{
               set-register i ''
               evaluate-commands -draft %{
                 try %{
-                  execute-keys "<a-a>c```\w,```<ret><a-:><a-semicolon><semicolon>x"
+                  execute-keys "<a-a>c```\w,```<ret><a-:><a-semicolon><semicolon>xs^\h*```\w<ret>"
                   evaluate-commands %sh{
                     if ! printf '%s' "$kak_selection" | grep 'markdown'; then
                       printf "set-register i 'inside'\n"
@@ -123,8 +123,22 @@ provide-module render-markdown %{
         evaluate-commands -draft %{
           try %{
             execute-keys "s^\h*>?\h*>*(-\h\[[x<space>]\]|[-*+]\h)<ret>s(-\h\[[x<space>]\]|[-*+]\h)<ret>_L"
-            evaluate-commands -itersel %{
+            evaluate-commands -save-regs 'i' -itersel %{
+              set-register i ''
+              evaluate-commands -draft %{
+                try %{
+                  execute-keys "<a-a>c```\w,```<ret><a-:><a-semicolon><semicolon>xs^\h*```\w<ret>"
+                  evaluate-commands %sh{
+                    if ! printf '%s' "$kak_selection" | grep 'markdown'; then
+                      printf "set-register i 'inside'\n"
+                    fi
+                  }
+                }
+              }
               evaluate-commands %sh{
+                if [ -n "$kak_main_reg_i" ]; then
+                  exit
+                fi
                 if [ -n "$(printf '%s' "$kak_selection" | grep -Po -- '-\s\[')" ]; then
                   if [ -n "$(printf '%s' "$kak_selection" | grep -o x)" ]; then
                     printf "set-option -add window _render_markdown_bare_ranges '%s'\n" \
@@ -145,7 +159,23 @@ provide-module render-markdown %{
         evaluate-commands -draft %{
           try %{
             execute-keys "s^\h*>?\h*>*----*\n<ret>s-+<ret>"
-            evaluate-commands -itersel %{
+            evaluate-commands -save-regs 'i' -itersel %{
+              set-register i ''
+              evaluate-commands -draft %{
+                try %{
+                  execute-keys "<a-a>c```\w,```<ret><a-:><a-semicolon><semicolon>xs^\h*```\w<ret>"
+                  evaluate-commands %sh{
+                    if ! printf '%s' "$kak_selection" | grep 'markdown'; then
+                      printf "set-register i 'inside'\n"
+                    fi
+                  }
+                }
+              }
+              evaluate-commands %sh{
+                if [ -n "$kak_main_reg_i" ]; then
+                  printf "fail\n"
+                fi
+              }
               set-option -add window _render_markdown_bare_ranges "%val{selection_desc}|%opt{render_markdown_horizontal_rule}"
             }
           }
@@ -153,7 +183,23 @@ provide-module render-markdown %{
         evaluate-commands -draft %{
           try %{
             execute-keys "s^\h*>?\h*>*____*\n<ret>s_+<ret>"
-            evaluate-commands -itersel %{
+            evaluate-commands -save-regs 'i' -itersel %{
+              set-register i ''
+              evaluate-commands -draft %{
+                try %{
+                  execute-keys "<a-a>c```\w,```<ret><a-:><a-semicolon><semicolon>xs^\h*```\w<ret>"
+                  evaluate-commands %sh{
+                    if ! printf '%s' "$kak_selection" | grep 'markdown'; then
+                      printf "set-register i 'inside'\n"
+                    fi
+                  }
+                }
+              }
+              evaluate-commands %sh{
+                if [ -n "$kak_main_reg_i" ]; then
+                  printf "fail\n"
+                fi
+              }
               set-option -add window _render_markdown_bare_ranges "%val{selection_desc}|%opt{render_markdown_horizontal_rule}"
             }
           }
@@ -161,7 +207,23 @@ provide-module render-markdown %{
         evaluate-commands -draft %{
           try %{
             execute-keys "s^\h*>?\h*>*\*\*\*\**\n<ret>s\*+<ret>"
-            evaluate-commands -itersel %{
+            evaluate-commands -save-regs 'i' -itersel %{
+              set-register i ''
+              evaluate-commands -draft %{
+                try %{
+                  execute-keys "<a-a>c```\w,```<ret><a-:><a-semicolon><semicolon>xs^\h*```\w<ret>"
+                  evaluate-commands %sh{
+                    if ! printf '%s' "$kak_selection" | grep 'markdown'; then
+                      printf "set-register i 'inside'\n"
+                    fi
+                  }
+                }
+              }
+              evaluate-commands %sh{
+                if [ -n "$kak_main_reg_i" ]; then
+                  printf "fail\n"
+                fi
+              }
               set-option -add window _render_markdown_bare_ranges "%val{selection_desc}|%opt{render_markdown_horizontal_rule}"
             }
           }
@@ -171,7 +233,23 @@ provide-module render-markdown %{
         evaluate-commands -draft %{
           try %{
             execute-keys "s^\h*<gt><ret>Gls<gt>\h<ret>"
-            evaluate-commands -itersel %{
+            evaluate-commands -save-regs 'i' -itersel %{
+              set-register i ''
+              evaluate-commands -draft %{
+                try %{
+                  execute-keys "<a-a>c```\w,```<ret><a-:><a-semicolon><semicolon>xs^\h*```\w<ret>"
+                  evaluate-commands %sh{
+                    if ! printf '%s' "$kak_selection" | grep 'markdown'; then
+                      printf "set-register i 'inside'\n"
+                    fi
+                  }
+                }
+              }
+              evaluate-commands %sh{
+                if [ -n "$kak_main_reg_i" ]; then
+                  printf "fail\n"
+                fi
+              }
               set-option -add window _render_markdown_bare_ranges "%val{selection_desc}|%opt{render_markdown_blockquote}"
             }
           }
@@ -182,8 +260,22 @@ provide-module render-markdown %{
         evaluate-commands -draft %{
           try %{
             execute-keys "s!?\[[^\[]+\]\([^\(]+\)<ret>"
-            evaluate-commands -itersel %{
+            evaluate-commands -save-regs 'i' -itersel %{
+              set-register i ''
+              evaluate-commands -draft %{
+                try %{
+                  execute-keys "<a-a>c```\w,```<ret><a-:><a-semicolon><semicolon>xs^\h*```\w<ret>"
+                  evaluate-commands %sh{
+                    if ! printf '%s' "$kak_selection" | grep 'markdown'; then
+                      printf "set-register i 'inside'\n"
+                    fi
+                  }
+                }
+              }
               evaluate-commands %sh{
+                if [ -n "$kak_main_reg_i" ]; then
+                  exit
+                fi
                 content="$(printf '%s' "$kak_selection" | grep -Po '\[.+\]' | sed "s/^\[//;s/\]$//;s/'/\'\'/g")"
                 if [ "$(printf '%s' "$kak_selection" | cut -c 1)" = "!" ]; then
                   printf "set-option -add window _render_markdown_bare_ranges '%s'\n" \
@@ -202,8 +294,22 @@ provide-module render-markdown %{
         evaluate-commands -draft %{
           try %{
             execute-keys "s!?\[[^\[]+\]\[[^\[]+\]<ret>"
-            evaluate-commands -itersel %{
+            evaluate-commands -save-regs 'i' -itersel %{
+              set-register i ''
+              evaluate-commands -draft %{
+                try %{
+                  execute-keys "<a-a>c```\w,```<ret><a-:><a-semicolon><semicolon>xs^\h*```\w<ret>"
+                  evaluate-commands %sh{
+                    if ! printf '%s' "$kak_selection" | grep 'markdown'; then
+                      printf "set-register i 'inside'\n"
+                    fi
+                  }
+                }
+              }
               evaluate-commands %sh{
+                if [ -n "$kak_main_reg_i" ]; then
+                  exit
+                fi
                 content="$(printf '%s' "$kak_selection" | grep -Po '\[.+\]\[' | sed "s/^\[//g;s/\]\[$//g;s/'/\'\'/g")"
                 printf "set-option -add window _render_markdown_bare_ranges '%s'\n" \
                   "$kak_selection_desc|${kak_opt_render_markdown_link_link}${content}"
@@ -214,8 +320,22 @@ provide-module render-markdown %{
         evaluate-commands -draft %{
           try %{
             execute-keys "s<lt>\S+@\S+\.[^\n]+<gt><ret>"
-            evaluate-commands -itersel %{
+            evaluate-commands -save-regs 'i' -itersel %{
+              set-register i ''
+              evaluate-commands -draft %{
+                try %{
+                  execute-keys "<a-a>c```\w,```<ret><a-:><a-semicolon><semicolon>xs^\h*```\w<ret>"
+                  evaluate-commands %sh{
+                    if ! printf '%s' "$kak_selection" | grep 'markdown'; then
+                      printf "set-register i 'inside'\n"
+                    fi
+                  }
+                }
+              }
               evaluate-commands %sh{
+                if [ -n "$kak_main_reg_i" ]; then
+                  exit
+                fi
                 content="$(printf '%s' "$kak_selection" | sed "s/^<//;s/>$//;s/'/\'\'/g" )"
                 printf "set-option -add window _render_markdown_bare_ranges '%s'\n" \
                   "$kak_selection_desc|${kak_opt_render_markdown_link_mail}${content}"
@@ -228,9 +348,23 @@ provide-module render-markdown %{
         evaluate-commands -draft %{
           try %{
             execute-keys "s[`*_~]+[^`*_~\n]+[`*_~]+<ret>"
-            evaluate-commands -itersel %{
+            evaluate-commands -save-regs 'i' -itersel %{
+              set-register i ''
+              evaluate-commands -draft %{
+                try %{
+                  execute-keys "<a-a>c```\w,```<ret><a-:><a-semicolon><semicolon>xs^\h*```\w<ret>"
+                  evaluate-commands %sh{
+                    if ! printf '%s' "$kak_selection" | grep 'markdown'; then
+                      printf "set-register i 'inside'\n"
+                    fi
+                  }
+                }
+              }
               try %{
                 evaluate-commands %sh{
+                  if [ -n "$kak_main_reg_i" ]; then
+                    exit
+                  fi
                   start="${kak_selection:0:1}"
                   end="${kak_selection: -1}"
                   if [ "$start" = "$end" ]; then

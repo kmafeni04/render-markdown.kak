@@ -1,4 +1,4 @@
-# Example 1
+# A file to go through and confirm all faces are loading correctly
 
 ## Headings
 
@@ -16,7 +16,7 @@ This is `text` with inline `code`
 ## Code blocks
 
 ```
-# Headers will still show in blocks that dont have a defined language
+# Headers will still show in blocks that don't have a defined language
 ```
 
 ```lua
@@ -45,6 +45,9 @@ int main(){
 
 ## Dashed line
 
+------
+******
+______
 > ------
 
 ## Block Quotes
@@ -82,3 +85,16 @@ int main(){
 _italic_
 **bold**
 __bold__
+
+```txt
+# Don't render markdown in code blocks that aren't markdown
+
+------
+
+> block
+
+- [ ] checkbox
+
+- list item
+
+```
