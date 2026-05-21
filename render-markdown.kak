@@ -224,87 +224,113 @@ provide-module render-markdown %{
           }
         }
 
-        # Strikethrough
+        # Strikethrough, Italics, Bold and Inline code
         evaluate-commands -draft %{
           try %{
-            execute-keys "s~~+[^\n]+~~+<ret>"
+            execute-keys "s[`*_~]+[^`*_~\n]+[`*_~]+<ret>"
             evaluate-commands -itersel %{
-              evaluate-commands %sh{
-                notfy-send ">$kak_selection"
-                content="$(printf '%s' "$kak_selection" | sed "s/~//g;s/'/\'\'/g")"
-                printf "set-option -add window _render_markdown_bare_ranges '%s'\n" \
-                  "$kak_selection_desc|${kak_opt_render_markdown_strikethrough}${content}"
+              try %{
+                evaluate-commands %sh{
+                  start="${kak_selection:0:1}"
+                  end="${kak_selection: -1}"
+                  if [ "$start" = "$end" ]; then
+                    content="$(printf '%s' "$kak_selection" | sed "s/'/\'\'/g")"
+                    case "$start" in
+                      "~")
+                        content="$(printf '%s' "$content" | sed 's/~//g')"
+                        printf "set-option -add window _render_markdown_bare_ranges '%s'\n" \
+                          "$kak_selection_desc|${kak_opt_render_markdown_strikethrough}${content}"
+                        ;;
+                      "\`")
+                        content="${content//\`/}"
+                        printf "set-option -add window _render_markdown_bare_ranges '%s'\n" \
+                          "$kak_selection_desc|${kak_opt_render_markdown_inline_code}${content}"
+                        ;;
+                      "_")
+                        if [ ${content:0:2} = "__" ]; then
+                          content="${content//\_/}"
+                          printf "set-option -add window _render_markdown_bare_ranges '%s'\n" \
+                            "$kak_selection_desc|${kak_opt_render_markdown_italics}${content}"
+                        else
+                          content="${content//\_/}"
+                          printf "set-option -add window _render_markdown_bare_ranges '%s'\n" \
+                            "$kak_selection_desc|${kak_opt_render_markdown_bold}${content}"
+                        fi
+                        ;;
+                      "*")
+                        if [ ${content:0:2} = "**" ]; then
+                          content="${content//\*/}"
+                          printf "set-option -add window _render_markdown_bare_ranges '%s'\n" \
+                            "$kak_selection_desc|${kak_opt_render_markdown_italics}${content}"
+                        else
+                          content="${content//\*/}"
+                          printf "set-option -add window _render_markdown_bare_ranges '%s'\n" \
+                            "$kak_selection_desc|${kak_opt_render_markdown_bold}${content}"
+                        fi
+                        ;;
+                    esac
+                    printf "fail\n"
+                  else
+                    printf "execute-keys '<a-:><a-semicolon><semicolon>'\n"
+                    case "$start" in
+                      "\`")
+                        printf "execute-keys 'l<a-a>g'\n"
+                        ;;
+                      "~")
+                        printf "execute-keys 'l<a-a>c~,~<ret>\n"
+                        ;;
+                      "_")
+                        printf "execute-keys 'l<a-a>c_,_<ret>\n"
+                        ;;
+                      "*")
+                        printf "execute-keys 'l<a-a>c\*,\*<ret>\n"
+                        ;;
+                    esac
+                    printf "execute-keys '<a-:><a-semicolon>'\n"
+                  fi
+                }
+                evaluate-commands %sh{
+                  start="${kak_selection:0:1}"
+                  content="$(printf '%s' "$kak_selection" | sed "s/'/\'\'/g")"
+                  case "$start" in
+                    "~")
+                      content="$(printf '%s' "$content" | sed 's/~//g')"
+                      printf "set-option -add window _render_markdown_bare_ranges '%s'\n" \
+                        "$kak_selection_desc|${kak_opt_render_markdown_strikethrough}${content}"
+                      ;;
+                    "\`")
+                      content="${content//\`/}"
+                      printf "set-option -add window _render_markdown_bare_ranges '%s'\n" \
+                        "$kak_selection_desc|${kak_opt_render_markdown_inline_code}${content}"
+                      ;;
+                    "_")
+                      if [ ${content:0:2} = "__" ]; then
+                        content="${content//\_/}"
+                        printf "set-option -add window _render_markdown_bare_ranges '%s'\n" \
+                          "$kak_selection_desc|${kak_opt_render_markdown_italics}${content}"
+                      else
+                        content="${content//\_/}"
+                        printf "set-option -add window _render_markdown_bare_ranges '%s'\n" \
+                          "$kak_selection_desc|${kak_opt_render_markdown_bold}${content}"
+                      fi
+                      ;;
+                    "*")
+                      if [ ${content:0:2} = "**" ]; then
+                        content="${content//\*/}"
+                        printf "set-option -add window _render_markdown_bare_ranges '%s'\n" \
+                          "$kak_selection_desc|${kak_opt_render_markdown_italics}${content}"
+                      else
+                        content="${content//\*/}"
+                        printf "set-option -add window _render_markdown_bare_ranges '%s'\n" \
+                          "$kak_selection_desc|${kak_opt_render_markdown_bold}${content}"
+                      fi
+                      ;;
+                  esac
+                }
               }
             }
           }
         }
-
-        # Italics
-        evaluate-commands -draft %{
-          try %{
-            execute-keys "s\*[^*\n]+\*[^*]<ret>H"
-            evaluate-commands -itersel %{
-              evaluate-commands %sh{
-                content="$(printf '%s' "$kak_selection" | sed "s/\*//g;s/'/\'\'/g")"
-                printf "set-option -add window _render_markdown_bare_ranges '%s'\n" \
-                  "$kak_selection_desc|${kak_opt_render_markdown_italics}${content}"
-              }
-            }
-          }
-        }
-        evaluate-commands -draft %{
-          try %{
-            execute-keys "s_[^_\n]+_[^_]<ret>H"
-            evaluate-commands -itersel %{
-              evaluate-commands %sh{
-                content="$(printf '%s' "$kak_selection" | sed "s/_//g;s/'/\'\'/g")"
-                printf "set-option -add window _render_markdown_bare_ranges '%s'\n" \
-                  "$kak_selection_desc|${kak_opt_render_markdown_italics}${content}"
-              }
-            }
-          }
-        }
-
-        # Bold
-        evaluate-commands -draft %{
-          try %{
-            execute-keys "s\*\*+[^*\n]+\*\*+<ret>"
-            evaluate-commands -itersel %{
-              evaluate-commands %sh{
-                content="$(printf '%s' "$kak_selection" | sed "s/\*//g;s/'/\'\'/g")"
-                printf "set-option -add window _render_markdown_bare_ranges '%s'\n" \
-                  "$kak_selection_desc|${kak_opt_render_markdown_bold}${content}"
-              }
-            }
-          }
-        }
-        evaluate-commands -draft %{
-          try %{
-            execute-keys "s__+[^_\n]+__+<ret>"
-            evaluate-commands -itersel %{
-              evaluate-commands %sh{
-                content="$(printf '%s' "$kak_selection" | sed "s/_//g;s/'/\'\'/g")"
-                printf "set-option -add window _render_markdown_bare_ranges '%s'\n" \
-                  "$kak_selection_desc|${kak_opt_render_markdown_bold}${content}"
-              }
-            }
-          }
-        }
-
-        # Inline code
-        evaluate-commands -draft %{
-          try %{
-            execute-keys "s`[^`\n]+`[^`]<ret>H"
-            evaluate-commands -itersel %{
-              evaluate-commands %sh{
-                content="$(printf '%s' "$kak_selection" | sed "s/\`//g;s/'/\'\'/g")"
-                printf "set-option -add window _render_markdown_bare_ranges '%s'\n" \
-                  "$kak_selection_desc|${kak_opt_render_markdown_inline_code}${content}"
-              }
-            }
-          }
-        }
-
       }
       set-option window _render_markdown_ranges %val{timestamp} %opt{_render_markdown_bare_ranges}
     }

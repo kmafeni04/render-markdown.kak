@@ -41,10 +41,9 @@ You can make changes to them according to your taste
 
 ## Known Issues
 - Blockquotes `>` have to be followed by a horizontal space or they will not render
-  - This done so the original character can be seen when the cursor hovers over the position
+  - This is done so the original character can be seen when the cursor hovers over the position
 - Headings `#*` are not rendered when they are in between codeblocks that don't have an assigned language
 - No rendering for tables (Not really planned)
-- Conflicts between `strkethrough`, `inline code`, `bold` and `italics` when they are written together
 
 ## Reference
 - https://github.com/MeanderingProgrammer/render-markdown.nvim
