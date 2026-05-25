@@ -17,9 +17,9 @@ provide-module render-markdown %{
 
   declare-option str render_markdown_bullet "{yellow+f} "
 
-  declare-option str render_markdown_horizontal_rule "{rgb:4F4F4F+f}──────────────────"
+  declare-option str render_markdown_horizontal_rule "{rgb:3e3e3e+f}──────────────────"
 
-  declare-option str render_markdown_blockquote "{rgb:4F4F4F+f}▋ "
+  declare-option str render_markdown_blockquote "{rgb:3e3e3e+f}▋ "
 
   declare-option str render_markdown_link_image "{blue+fu@Default} "
   declare-option str render_markdown_link_web "{blue+fu@Default}󰖟 "
@@ -29,7 +29,7 @@ provide-module render-markdown %{
   declare-option str render_markdown_strikethrough "{+s@Default}"
   declare-option str render_markdown_italics "{+i@Default}"
   declare-option str render_markdown_bold "{+b@Default}"
-  declare-option str render_markdown_inline_code "{cyan,black+f}"
+  declare-option str render_markdown_inline_code "{cyan,rgb:3e3e3e+f}"
 
 
   define-command render-markdown-enable %{
@@ -347,7 +347,7 @@ provide-module render-markdown %{
         # Strikethrough, Italics, Bold and Inline code
         evaluate-commands -draft %{
           try %{
-            execute-keys "s(?<lt>!\\)(?:`[^`\n]+`|\*\*[^*\n]+\*\*|__[^_\n]+__|~~[^~\n]+~~|\*[^*\n]+\*|_[^_\n]+_)<ret>"
+            execute-keys "s(?<lt>!\\)(?:`[^`\n]+`|(?<lt>!\*)\*\*[^*\n]+\*\*(?!\*)|(?<lt>!_)__[^_\n]+__(?!_)|~~[^~\n]+~~|(?<lt>!\*)\*[^*\n]+\*(?!\*)|(?<lt>!_)_[^_\n]+_(?!_))<ret>"
             evaluate-commands -save-regs 'i' -itersel %{
               set-register i ''
               evaluate-commands -draft %{
@@ -363,6 +363,7 @@ provide-module render-markdown %{
               try %{
                 evaluate-commands %sh{
                   if [ -n "$kak_main_reg_i" ]; then
+                    printf "fail\n"
                     exit
                   fi
                   start="${kak_selection:0:1}"

@@ -15,8 +15,21 @@ This is `text` with inline `code`
 
 ## Code blocks
 
+```txt
+# Don't render markdown in code blocks that aren't markdown
+
+------
+
+> block
+
+- [ ] checkbox
+
+- list item
+
 ```
-# Headers will still show in blocks that don't have a defined language
+
+```
+# Markdown will still render in blocks that don't have a defined language
 ```
 
 ```lua
@@ -87,16 +100,3 @@ _italic_
 __bold__
 ~~strike~~ *italic* _italic_ **bold** __bold__
 \~~strike~~ \*italic* \_italic_ \**bold** \__bold__
-
-```txt
-# Don't render markdown in code blocks that aren't markdown
-
-------
-
-> block
-
-- [ ] checkbox
-
-- list item
-
-```
