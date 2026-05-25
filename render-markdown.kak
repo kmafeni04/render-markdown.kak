@@ -347,7 +347,7 @@ provide-module render-markdown %{
         # Strikethrough, Italics, Bold and Inline code
         evaluate-commands -draft %{
           try %{
-            execute-keys "s\b[`*_~]+[^`*_~\n]+[`*_~]+\b<ret>"
+            execute-keys "s(?<lt>!\\)(?:`[^`\n]+`|\*\*[^*\n]+\*\*|__[^_\n]+__|~~[^~\n]+~~|\*[^*\n]+\*|_[^_\n]+_)<ret>"
             evaluate-commands -save-regs 'i' -itersel %{
               set-register i ''
               evaluate-commands -draft %{
