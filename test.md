@@ -85,6 +85,8 @@ ______
 _italic_
 **bold**
 __bold__
+~~strike~~ *italic* _italic_ **bold** __bold__
+\~~strike~~ \*italic* \_italic_ \**bold** \__bold__
 
 ```txt
 # Don't render markdown in code blocks that aren't markdown
