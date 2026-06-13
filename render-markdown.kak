@@ -139,8 +139,8 @@ provide-module render-markdown %{
                 if [ -n "$kak_main_reg_i" ]; then
                   exit
                 fi
-                if [ -n "$(printf '%s' "$kak_selection" | grep -Po -- '-\s\[')" ]; then
-                  if [ -n "$(printf '%s' "$kak_selection" | grep -o x)" ]; then
+                if printf '%s' "$kak_selection" | grep -Poq -- '-\s\['; then
+                  if  printf '%s' "$kak_selection" | grep -oq x; then
                     printf "set-option -add window _render_markdown_bare_ranges '%s'\n" \
                       "$kak_selection_desc|$kak_opt_render_markdown_checkbox_checked"
                   else
@@ -280,7 +280,7 @@ provide-module render-markdown %{
                 if [ "$(printf '%s' "$kak_selection" | cut -c 1)" = "!" ]; then
                   printf "set-option -add window _render_markdown_bare_ranges '%s'\n" \
                     "$kak_selection_desc|${kak_opt_render_markdown_link_image}${content}"
-                elif [ -n "$(printf '%s' "$kak_selection" | grep -Po '\(https?://' )" ]; then
+                elif printf '%s' "$kak_selection" | grep -Poq '\(https?://'; then
                   printf "set-option -add window _render_markdown_bare_ranges '%s'\n" \
                     "$kak_selection_desc|${kak_opt_render_markdown_link_web}${content}"
                 else
@@ -366,42 +366,46 @@ provide-module render-markdown %{
                     printf "fail\n"
                     exit
                   fi
-                  start="${kak_selection:0:1}"
-                  end="${kak_selection: -1}"
+                  start=$(printf "%.1s" "$kak_selection")
+                  end=$(printf "%s\n" "$kak_selection" | tail -c 2 | head -c 1)
                   if [ "$start" = "$end" ]; then
                     content="$(printf '%s' "$kak_selection" | sed "s/'/\'\'/g")"
                     case "$start" in
                       "~")
-                        content="$(printf '%s' "$content" | sed 's/~//g')"
+                        content="$(printf '%s' "$content" | tr -d '~')"
                         printf "set-option -add window _render_markdown_bare_ranges '%s'\n" \
                           "$kak_selection_desc|${kak_opt_render_markdown_strikethrough}${content}"
                         ;;
                       "\`")
-                        content="${content//\`/}"
+                        content="$(printf '%s' "$content" | tr -d '`')"
                         printf "set-option -add window _render_markdown_bare_ranges '%s'\n" \
                           "$kak_selection_desc|${kak_opt_render_markdown_inline_code}${content}"
                         ;;
                       "_")
-                        if [ ${content:0:2} = "__" ]; then
-                          content="${content//\_/}"
-                          printf "set-option -add window _render_markdown_bare_ranges '%s'\n" \
-                            "$kak_selection_desc|${kak_opt_render_markdown_italics}${content}"
-                        else
-                          content="${content//\_/}"
-                          printf "set-option -add window _render_markdown_bare_ranges '%s'\n" \
-                            "$kak_selection_desc|${kak_opt_render_markdown_bold}${content}"
-                        fi
+                        replace="$(printf '%s\n' "$content" | tr -d '_')"
+                        case "$content" in
+                          __*)
+                            printf "set-option -add window _render_markdown_bare_ranges '%s'\n" \
+                              "$kak_selection_desc|${kak_opt_render_markdown_italics}${replace}"
+                            ;;
+                          *)
+                            printf "set-option -add window _render_markdown_bare_ranges '%s'\n" \
+                              "$kak_selection_desc|${kak_opt_render_markdown_bold}${replace}"
+                          ;;
+                        esac
                         ;;
                       "*")
-                        if [ ${content:0:2} = "**" ]; then
-                          content="${content//\*/}"
-                          printf "set-option -add window _render_markdown_bare_ranges '%s'\n" \
-                            "$kak_selection_desc|${kak_opt_render_markdown_italics}${content}"
-                        else
-                          content="${content//\*/}"
-                          printf "set-option -add window _render_markdown_bare_ranges '%s'\n" \
-                            "$kak_selection_desc|${kak_opt_render_markdown_bold}${content}"
-                        fi
+                        replace="$(printf '%s\n' "$content" | tr -d '*')"
+                        case "$content" in
+                          \*\**)
+                            printf "set-option -add window _render_markdown_bare_ranges '%s'\n" \
+                              "$kak_selection_desc|${kak_opt_render_markdown_italics}${replace}"
+                            ;;
+                          *)
+                            printf "set-option -add window _render_markdown_bare_ranges '%s'\n" \
+                              "$kak_selection_desc|${kak_opt_render_markdown_bold}${replace}"
+                            ;;
+                        esac
                         ;;
                     esac
                     printf "fail\n"
@@ -425,40 +429,44 @@ provide-module render-markdown %{
                   fi
                 }
                 evaluate-commands %sh{
-                  start="${kak_selection:0:1}"
+                  start=$(printf "%.1s" "$kak_selection")
                   content="$(printf '%s' "$kak_selection" | sed "s/'/\'\'/g")"
                   case "$start" in
                     "~")
-                      content="$(printf '%s' "$content" | sed 's/~//g')"
+                      content="$(printf '%s' "$content" | tr -d '~')"
                       printf "set-option -add window _render_markdown_bare_ranges '%s'\n" \
                         "$kak_selection_desc|${kak_opt_render_markdown_strikethrough}${content}"
                       ;;
                     "\`")
-                      content="${content//\`/}"
+                      content="$(printf '%s' "$content" | tr -d '`')"
                       printf "set-option -add window _render_markdown_bare_ranges '%s'\n" \
                         "$kak_selection_desc|${kak_opt_render_markdown_inline_code}${content}"
                       ;;
                     "_")
-                      if [ ${content:0:2} = "__" ]; then
-                        content="${content//\_/}"
-                        printf "set-option -add window _render_markdown_bare_ranges '%s'\n" \
-                          "$kak_selection_desc|${kak_opt_render_markdown_italics}${content}"
-                      else
-                        content="${content//\_/}"
-                        printf "set-option -add window _render_markdown_bare_ranges '%s'\n" \
-                          "$kak_selection_desc|${kak_opt_render_markdown_bold}${content}"
-                      fi
+                      replace="$(printf '%s\n' "$content" | tr -d '_')"
+                      case "$content" in
+                        __*)
+                          printf "set-option -add window _render_markdown_bare_ranges '%s'\n" \
+                            "$kak_selection_desc|${kak_opt_render_markdown_italics}${replace}"
+                          ;;
+                        *)
+                          printf "set-option -add window _render_markdown_bare_ranges '%s'\n" \
+                            "$kak_selection_desc|${kak_opt_render_markdown_bold}${replace}"
+                        ;;
+                      esac
                       ;;
                     "*")
-                      if [ ${content:0:2} = "**" ]; then
-                        content="${content//\*/}"
-                        printf "set-option -add window _render_markdown_bare_ranges '%s'\n" \
-                          "$kak_selection_desc|${kak_opt_render_markdown_italics}${content}"
-                      else
-                        content="${content//\*/}"
-                        printf "set-option -add window _render_markdown_bare_ranges '%s'\n" \
-                          "$kak_selection_desc|${kak_opt_render_markdown_bold}${content}"
-                      fi
+                      replace="$(printf '%s\n' "$content" | tr -d '*')"
+                      case "$content" in
+                        \*\**)
+                          printf "set-option -add window _render_markdown_bare_ranges '%s'\n" \
+                            "$kak_selection_desc|${kak_opt_render_markdown_italics}${replace}"
+                          ;;
+                        *)
+                          printf "set-option -add window _render_markdown_bare_ranges '%s'\n" \
+                            "$kak_selection_desc|${kak_opt_render_markdown_bold}${replace}"
+                          ;;
+                      esac
                       ;;
                   esac
                 }
