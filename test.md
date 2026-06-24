@@ -100,3 +100,11 @@ _italic_
 __bold__
 ~~strike~~ *italic* _italic_ **bold** __bold__
 \~~strike~~ \*italic* \_italic_ \**bold** \__bold__
+.__bold__.
+.**bold**.
+._italic_.
+.*italic*.
+should_not_match
+should*not*match
+should__not__match
+should**not**match
