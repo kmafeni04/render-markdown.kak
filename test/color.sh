@@ -36,8 +36,8 @@ cm_color() {
   fi
 }
 
-cm_red()    { cm_color 31 "$1"; }
-cm_green()  { cm_color 32 "$1"; }
+cm_red() { cm_color 31 "$1"; }
+cm_green() { cm_color 32 "$1"; }
 cm_yellow() { cm_color 33 "$1"; }
-cm_blue()   { cm_color 34 "$1"; }
-cm_bold()   { cm_color 1 "$1"; }
+cm_blue() { cm_color 34 "$1"; }
+cm_bold() { cm_color 1 "$1"; }

@@ -13,9 +13,9 @@
 KAK_PID=
 kak_json_start() { # session work init
   mkfifo "$2/in"
-  kak -n -s "$1" -ui json -e "$3" < "$2/in" > "$2/out.json" 2> "$2/err" &
+  kak -n -s "$1" -ui json -e "$3" <"$2/in" >"$2/out.json" 2>"$2/err" &
   KAK_PID=$!
-  exec 3> "$2/in"   # hold stdin open; closed by kak_json_stop
+  exec 3>"$2/in" # hold stdin open; closed by kak_json_stop
 }
 
 kak_json_key() { # key

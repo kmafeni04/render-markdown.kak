@@ -19,6 +19,20 @@ hook global WinSetOption filetype=markdown %{
 }
 ```
 
+## Quick test
+
+From the repo root, open a sample with the plugin loaded and rendering
+enabled:
+
+kak -n -e 'source render-markdown.kak; render-markdown-enable' example.md
+
+`example.md` covers all rendered constructs; `test/fixtures/mixed.md` is a
+larger sample. The render happens automatically a moment after opening (the
+update runs on NormalIdle), so no other setup is needed — just a terminal
+with a nerd-font glyph set.
+
+The full automated suite is `dash test/run.sh` (see Testing below).
+
 ## Rendering Support
 
 Currently the plugin supports rendering
@@ -62,14 +76,17 @@ dash test/run.sh [unit|integration|smoke|bless|lint|all]
 
 - `unit` — pure-shell tests for the classifier library (no Kakoune needed)
 - `integration` — runs each fixture through a headless Kakoune session
-  (via tmux) and diffs the emitted range-specs against committed goldens
+  (`kak -ui json`, no terminal needed) and diffs the emitted range-specs
+  against committed goldens
 - `smoke` — checks the replace-ranges highlighter really renders glyphs
 - `bless` — regenerates goldens from current output (use when behaviour
   intentionally changes)
 - `lint` — shellcheck on all shell scripts
 
-Requires `dash`, `kak` and `tmux`. When a golden changes, review the diff
-and re-bless only if the change is intended.
+Requires `kak` for the integration and smoke tests. The shell scripts are
+POSIX-only and verified under `dash` (any POSIX sh will also run them).
+When a golden changes, review the diff and re-bless only if the change is
+intended.
 
 ## Known Issues
 - Inline formatting inside headings (bold, italic, code, links) renders at one

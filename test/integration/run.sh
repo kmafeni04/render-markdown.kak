@@ -1,9 +1,12 @@
 #!/usr/bin/env sh
 set -eu
-cd "$(dirname "$0")/../.."  # repo root
+cd "$(dirname "$0")/../.." # repo root
 # shellcheck disable=SC1091  # color.sh is linted separately
 . test/color.sh
-command -v kak >/dev/null 2>&1 || { printf '%s\n' "$(cm_yellow 'skip kak not installed')"; exit 0; }
+command -v kak >/dev/null 2>&1 || {
+  printf '%s\n' "$(cm_yellow 'skip kak not installed')"
+  exit 0
+}
 
 plugin=render-markdown.kak
 n=0
@@ -22,6 +25,6 @@ for f in test/fixtures/*.md; do
     exit 1
   fi
   rm -f "$dump"
-  n=$((n+1))
+  n=$((n + 1))
 done
 printf '%s\n' "$(cm_green "ok $n fixtures")"

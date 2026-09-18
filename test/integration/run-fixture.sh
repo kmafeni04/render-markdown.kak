@@ -3,7 +3,7 @@
 # Runs one fixture in a headless kakoune (json ui) and captures the emitted
 # range-specs to <dumpfile>.
 set -eu
-cd "$(dirname "$0")/../.."  # repo root
+cd "$(dirname "$0")/../.." # repo root
 # shellcheck disable=SC1091  # sourced helpers are linted separately
 . test/color.sh
 # shellcheck disable=SC1091  # sourced helpers are linted separately
@@ -15,7 +15,7 @@ dump=$3
 
 work=$(mktemp -d /tmp/rmtest.XXXXXX) || exit 1
 trap 'rm -rf "$work"' EXIT HUP INT TERM
-: > "$dump"
+: >"$dump"
 
 kak_json_start "rmtest-$$" "$work" \
   "source '$plugin'; set-option global _render_markdown_debug_file '$dump'; edit '$fixture'; _render-markdown-update"

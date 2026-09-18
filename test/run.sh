@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 # render-markdown.kak local test runner (POSIX; also run as: dash test/run.sh)
 set -eu
-case $0 in */*) cd "${0%/*}" ;; esac   # POSIX dirname substitute
+case $0 in */*) cd "${0%/*}" ;; esac # POSIX dirname substitute
 
 # colors for section headers
 # shellcheck disable=SC1091  # color.sh is linted separately
@@ -14,11 +14,26 @@ header() {
 
 cmd=${1:-all}
 case $cmd in
-  unit)        header 'Unit tests:'; dash ./unit/run.sh ;;
-  integration) header 'Integration tests:'; ./integration/run.sh ;;
-  smoke)       header 'Smoke test:'; ./integration/smoke.sh ;;
-  bless)       header 'Bless goldens:'; ./integration/bless.sh ;;
-  lint)        header 'Lint:'; dash ./lint.sh ;;
+  unit)
+    header 'Unit tests:'
+    dash ./unit/run.sh
+    ;;
+  integration)
+    header 'Integration tests:'
+    ./integration/run.sh
+    ;;
+  smoke)
+    header 'Smoke test:'
+    ./integration/smoke.sh
+    ;;
+  bless)
+    header 'Bless goldens:'
+    ./integration/bless.sh
+    ;;
+  lint)
+    header 'Lint:'
+    dash ./lint.sh
+    ;;
   all)
     header 'Unit tests:'
     dash ./unit/run.sh
@@ -29,5 +44,8 @@ case $cmd in
     header 'Lint:'
     dash ./lint.sh
     ;;
-  *) printf 'usage: test/run.sh [unit|integration|smoke|bless|lint|all]\n' >&2; exit 2 ;;
+  *)
+    printf 'usage: test/run.sh [unit|integration|smoke|bless|lint|all]\n' >&2
+    exit 2
+    ;;
 esac
