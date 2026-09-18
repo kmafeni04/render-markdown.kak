@@ -201,7 +201,22 @@ provide-module render-markdown %{
         hrule)
           rm_emit hrule "$kak_opt_render_markdown_horizontal_rule" '' ;;
         blockquote)
-          rm_emit blockquote "$kak_opt_render_markdown_blockquote" '' ;;
+          # replace the leading '>' run with one glyph per '>' (whitespace is
+          # kept): '> ' -> '▋ ', '>text' -> '▋text', '>> t' -> '▋▋ t'
+          cb=$(printf '\175')  # close-brace char, so no brace literal appears here
+          head=$(printf '%s' "$kak_opt_render_markdown_blockquote" | sed "s/$cb.*/$cb/")
+          glyph=$(printf '%s' "$kak_opt_render_markdown_blockquote" | sed "s/.*$cb//;s/[[:space:]]*$//")
+          s=$kak_selection
+          drawn=
+          while [ -n "$s" ]; do
+            c=$(printf '%.1s' "$s")
+            s=${s#?}
+            case "$c" in
+              '>') drawn="$drawn$glyph" ;;
+              *) drawn="$drawn$c" ;;
+            esac
+          done
+          rm_emit blockquote "$head" "$drawn" ;;
         link)
           if rm_consumed; then exit 0; fi
           content=$(printf '%s' "$kak_selection" | sed -e 's/^!//' -e 's/^\[//' -e 's/\]\(.*\)$//' -e 's/\]\[.*$//' -e "s/'/''/g")
@@ -360,7 +375,7 @@ provide-module render-markdown %{
     evaluate-commands -draft %{
       execute-keys "gtGbx"
       try %{
-        execute-keys "s^\h*<gt><ret>Gls<gt>\h<ret>"
+        execute-keys "s^\h*<gt>+\h*<ret>"
         _render-markdown-handle blockquote
       }
     }

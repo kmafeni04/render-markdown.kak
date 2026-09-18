@@ -90,9 +90,19 @@ check 'hrule' \
   "${pre}'7.1,7.7|{r}HR'" \
   "$(run hrule)"
 
-kak_selection='> quote'                kak_selection_desc='8.1,8.8'
+kak_selection='> '                    kak_selection_desc='8.1,8.2'
 check 'blockquote' \
-  "${pre}'8.1,8.8|{r}Q '" \
+  "${pre}'8.1,8.2|{r}Q '" \
+  "$(run blockquote)"
+
+kak_selection='>'                      kak_selection_desc='9.1,9.1'
+check 'blockquote without space' \
+  "${pre}'9.1,9.1|{r}Q'" \
+  "$(run blockquote)"
+
+kak_selection='>>'                     kak_selection_desc='10.1,10.2'
+check 'blockquote nested run' \
+  "${pre}'10.1,10.2|{r}QQ'" \
   "$(run blockquote)"
 
 kak_selection='[site](https://x)'      kak_selection_desc='9.1,9.20'

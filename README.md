@@ -59,8 +59,6 @@ Requires `dash`, `kak` and `tmux`. When a golden changes, review the diff
 and re-bless only if the change is intended.
 
 ## Known Issues
-- Blockquotes `>` have to be followed by a horizontal space or they will not render
-  - This is done so the original character can be seen when the cursor hovers over the position
 - Inline formatting inside headings (bold, italic, code, links) renders at one
   level only — nested emphasis spans inside headings are not parsed
 - No rendering for tables (Not really planned)
