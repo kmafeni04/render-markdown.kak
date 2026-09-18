@@ -216,8 +216,46 @@ check 'heading image' '{I}img{H}' "$(rm_inline '![img](a.png)' '{H}')"
 check 'heading mixed spans' 'a{H+b}b{H} c{H+i}d{H}' "$(rm_inline 'a**b** c*d*' '{H}')"
 check 'heading span inherits attr token' '{blue+fb}b{blue+f}' "$(rm_inline '**b**' '{blue+f}')"
 
+export kak_opt_render_markdown_table_separator='{S}'
+export kak_opt_render_markdown_table_pipe='{P}'
+
+kak_selection='|---|---|'                   kak_selection_desc='2.1,2.10'
+check 'table separator row' \
+"${pre}'2.1,2.10|{S}├───┼───┤'
+set-option -add global _render_markdown_consumed_lines 2" \
+  "$(run table)"
+
+kak_selection='| a | b |'                  kak_selection_desc='1.1,1.9'
+check 'table pipe bars' \
+"${pre}'1.1+1|{P}│'
+${pre}'1.5+1|{P}│'
+${pre}'1.9+1|{P}│'
+set-option -add global _render_markdown_consumed_lines 1" \
+  "$(run table)"
+
+# render_markdown_table_align: aligned table output (no trailing newline)
+check 'align simple table' \
+"| a | bb | c |
+|---|----|---|
+| x | y  |   |" \
+  "$(printf '%s\n' '| a| bb | c' '|---|---|' '| x | y' | render_markdown_table_align)"
+
+check 'align keeps indent and pads uneven rows' \
+"  | a       | bb  | c | new |
+  |---------|-----|---|-----|
+  | aaa     | bbb |   |     |
+  | new row |     |   |     |" \
+  "$(printf '%s\n' '  | a | bb | c | new' '  |---|---|' '  | aaa | bbb |' '  | new row' | render_markdown_table_align)"
+
+check 'align separator min three dashes' \
+"| c  |
+|----|
+| xx |" \
+  "$(printf '%s\n' '| c' '|-' '| xx' | render_markdown_table_align)"
+
 if [ "$fails" -gt 0 ]; then
   printf '%s\n' "$(cm_red "FAIL $fails of $((passes+fails)) checks")"
   exit 1
 fi
 printf '%s\n' "$(cm_green "ok $passes checks")"
+

@@ -33,11 +33,24 @@ Currently the plugin supports rendering
 - Italics
 - Bold text
 - Inline code
+- Tables (box-drawing grid: │ bars, ├ ┼ ┤ ─ separator line)
 
 ## Customisation
 
 All rendered faces are set with `render_markdown_*` options
 You can make changes to them according to your taste
+
+## Table commands
+
+- `render-markdown-table-select` — select the table enclosing the cursor
+- `render-markdown-table-format` — align that table: pads each column to its
+  widest cell and rewrites separator rows as dash runs (at least three dashes).
+  Works with uneven rows; the indentation of the first line is kept.
+
+Tables are rendered as a connecting grid: each `|` becomes a `│` bar and the
+separator row becomes a `├─┼─┤` line. All replacement glyphs are single-width,
+so column alignment is never disturbed. Header/content cell text is left
+untouched (no inline markdown inside cells).
 
 ## Testing
 
@@ -61,7 +74,7 @@ and re-bless only if the change is intended.
 ## Known Issues
 - Inline formatting inside headings (bold, italic, code, links) renders at one
   level only — nested emphasis spans inside headings are not parsed
-- No rendering for tables (Not really planned)
+- Inline markdown inside table cells is not rendered (cells show the raw text)
 
 ## Reference
 - https://github.com/MeanderingProgrammer/render-markdown.nvim

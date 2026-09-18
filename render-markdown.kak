@@ -34,6 +34,9 @@ provide-module render-markdown %{
   declare-option str render_markdown_bold "{+b@Default}"
   declare-option str render_markdown_inline_code "{cyan,rgb:3e3e3e+f}"
 
+  declare-option str render_markdown_table_separator "{rgb:3e3e3e+f}"
+  declare-option str render_markdown_table_pipe "{rgb:3e3e3e+f}"
+
   # Test-only: when set to a file path, every emitted range is also appended
   # verbatim (one per line). Used by test/integration/run-fixture.sh to build
   # and check golden files; unset (default) means no extra runtime work.
@@ -49,9 +52,15 @@ provide-module render-markdown %{
       printf '%s' "$1" | sed "s/'/''/g"
     }
 
-    # emit one bare range: <desc>|<face><text>, + debug-file mirror
+    # emit a bare range: <desc>|<face><text>, + debug-file mirror. The
+    # face/text part is escaped per the range-specs format (| and \);
+    # rm_emit_desc takes an explicit descriptor for per-position ranges.
     rm_emit() {
-      range="$kak_selection_desc|$(rm_escape "$2$3")"
+      rm_emit_desc "$kak_selection_desc" "$2" "$3"
+    }
+
+    rm_emit_desc() {
+      range="$1|$(rm_escape "$2$3")"
       printf "set-option -add window _render_markdown_bare_ranges '%s'\n" "$(rm_quote "$range")"
       if [ -n "$kak_opt__render_markdown_debug_file" ]; then
         printf '%s\n' "$range" >> "$kak_opt__render_markdown_debug_file"
@@ -184,6 +193,120 @@ provide-module render-markdown %{
       printf '%s' "$out"
     }
 
+render_markdown_table_align() {
+  # read rows from stdin, remember the first line's indent
+  n=0
+  indent=
+  while IFS= read -r line; do
+    n=$((n + 1))
+    eval "row$n=\$line"
+    if [ -z "$indent" ]; then
+      indent=$(printf '%s' "$line" | sed 's/[^[:space:]].*//')
+    fi
+  done
+  rows=$n
+
+  # pass 1: split into trimmed segments, detect separator rows, and record
+  # the per-column content width (separators do not count towards widths)
+  maxcols=0
+  i=0
+  while [ $i -lt "$rows" ]; do
+    i=$((i + 1))
+    eval "line=\$row$i"
+    rest=$line
+    j=0
+    while :; do
+      case "$rest" in
+        *\|*) seg=${rest%%\|*}; rest=${rest#*\|} ;;
+        *)    seg=$rest;        rest= ;;
+      esac
+      j=$((j + 1))
+      seg=$(printf '%s' "$seg" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+      eval "s${i}_${j}=\$seg"
+      [ -n "$rest" ] || break
+    done
+
+    # columns = segments after the leading pipe, up to the last non-empty one
+    last=$j
+    while [ "$last" -gt 1 ] && eval "[ -z \"\$s${i}_${last}\" ]"; do
+      last=$((last - 1))
+    done
+    cols=$((last - 1))
+    [ "$cols" -gt 0 ] || cols=0
+
+    # separator row: every segment is empty or dash/colon, with a dash
+    hasdash=0; sep=1
+    k=1
+    while [ $k -le "$j" ]; do
+      eval "seg=\$s${i}_${k}"
+      case "$seg" in
+        '') ;;
+        *[!-:]*) sep=0 ;;
+        *-*) hasdash=1 ;;
+      esac
+      k=$((k + 1))
+    done
+    [ "$hasdash" -eq 0 ] && sep=0
+    eval "sep$i=$sep"
+    eval "segn$i=$j"
+
+    if [ "$sep" -eq 0 ]; then
+      k=2
+      while [ $k -le "$j" ]; do
+        eval "seg=\$s${i}_${k}"
+        len=${#seg}
+        col=$((k - 1))
+        w=$(eval "printf '%s' \"\${w$col:-}\"")
+        [ -z "$w" ] && w=0
+        [ "$len" -gt "$w" ] && eval "w$col=$len"
+        k=$((k + 1))
+      done
+    fi
+    [ "$cols" -gt "$maxcols" ] && maxcols=$cols
+  done
+
+  # pass 2: emit the aligned rows
+  i=0
+  while [ $i -lt "$rows" ]; do
+    i=$((i + 1))
+    eval "sep=\$sep$i"
+    if [ "$sep" -eq 1 ]; then
+      line="$indent|"
+      k=1
+      while [ $k -le "$maxcols" ]; do
+        w=$(eval "printf '%s' \"\${w$k:-}\"")
+        [ -z "$w" ] && w=0
+        d=$((w + 2)); [ "$d" -lt 3 ] && d=3
+        dashes=$(printf '%0*d' "$d" 0 | tr '0' '-')
+        line="$line$dashes|"
+        k=$((k + 1))
+      done
+    else
+      line="$indent|"
+      k=1
+      while [ $k -le "$maxcols" ]; do
+        pos=$((k + 1))
+        eval "segn=\$segn$i"
+        if [ "$pos" -le "$segn" ]; then
+          eval "cell=\$s${i}_${pos}"
+        else
+          cell=
+        fi
+        w=$(eval "printf '%s' \"\${w$k:-}\"")
+        [ -z "$w" ] && w=0
+        nsp=$((w - ${#cell}))
+        pad=$(printf '%*s' "$nsp" '')
+        line="$line $cell$pad |"
+        k=$((k + 1))
+      done
+    fi
+    if [ "$i" -lt "$rows" ]; then
+      printf '%s\n' "$line"
+    else
+      printf '%s' "$line"
+    fi
+  done
+}
     render_markdown_classify() {
       kind=$1
       case "$kind" in
@@ -222,6 +345,47 @@ provide-module render-markdown %{
             esac
           done
           rm_emit blockquote "$head" "$drawn" ;;
+        table)
+          # rows are consumed so inline kinds never render inside cells.
+          # Separator rows (only dashes/colons between pipes) are redrawn as a
+          # connecting grid line, e.g. |---|----| -> ├────┼──┤; other rows get
+          # each pipe replaced by a box-drawing bar (│). All replacement
+          # glyphs are single-width, so column alignment is never disturbed.
+          pos=${kak_selection_desc%%,*}
+          line=${pos%%.*}
+          col=${pos#*.}
+          content=$(printf '%s' "$kak_selection" | tr -d ' \t|')
+          if [ -n "$content" ] && ! printf '%s' "$content" | grep -q '[^-:]'; then
+            pipes=$(printf '%s' "$kak_selection" | tr -cd '|' | wc -c)
+            s=$kak_selection
+            drawn=
+            n=0
+            while [ -n "$s" ]; do
+              c=$(printf '%.1s' "$s")
+              s=${s#?}
+              case "$c" in
+                '|')
+                  n=$((n + 1))
+                  if [ "$n" -eq 1 ]; then c='├'
+                  elif [ "$n" -eq "$pipes" ]; then c='┤'
+                  else c='┼'; fi ;;
+                '-'|':') c='─' ;;
+              esac
+              drawn="$drawn$c"
+            done
+            rm_emit table "$kak_opt_render_markdown_table_separator" "$drawn"
+          else
+            s=$kak_selection
+            off=$col
+            while [ -n "$s" ]; do
+              case "$s" in
+                \|*) rm_emit_desc "$line.$off+1" "$kak_opt_render_markdown_table_pipe" '│' ;;
+              esac
+              s=${s#?}
+              off=$((off + 1))
+            done
+          fi
+          printf "set-option -add global _render_markdown_consumed_lines %s\n" "$line" ;;
         link)
           if rm_consumed; then exit 0; fi
           content=$(printf '%s' "$kak_selection" | sed -e 's/^!//' -e 's/^\[//' -e 's/\]\(.*\)$//' -e 's/\]\[.*$//' -e "s/'/''/g")
@@ -306,6 +470,7 @@ provide-module render-markdown %{
         # kak_opt_render_markdown_codeblock_end kak_opt_render_markdown_strikethrough
         # kak_opt_render_markdown_italics kak_opt_render_markdown_bold
         # kak_opt_render_markdown_inline_code kak_opt__render_markdown_debug_file
+        # kak_opt_render_markdown_table_separator kak_opt_render_markdown_table_pipe
         # kak_opt__render_markdown_consumed_lines kak_selection kak_selection_desc kak_main_reg_i
         if [ -n "$kak_main_reg_i" ]; then
           exit 0
@@ -386,6 +551,16 @@ provide-module render-markdown %{
     }
   }
 
+  define-command -hidden _render-markdown-match-tables %{
+    evaluate-commands -draft %{
+      execute-keys "gtGbx"
+      try %{
+        execute-keys "s^\h*\|[^\n]*<ret>"
+        _render-markdown-handle table
+      }
+    }
+  }
+
   define-command -hidden _render-markdown-match-links %{
     evaluate-commands -draft %{
       execute-keys "gtGbx"
@@ -436,17 +611,53 @@ provide-module render-markdown %{
     }
   }
 
+  # Select the table enclosing the cursor (a run of lines whose first
+  # non-blank character is a |). Adapted from kakoune-table.
+  define-command render-markdown-table-select %{
+    try %{
+      execute-keys "gi<a-k>\|<ret>"
+    } catch %{
+      fail 'not in a table'
+    }
+    evaluate-commands -save-regs '/' %{
+      set-register / (?:\h*\|[^\n]*\n)+
+      try %{
+        execute-keys -draft "<a-C><a-space>"
+        execute-keys -draft "kgi<a-k>\|<ret>"
+        execute-keys "<a-n>"
+      }
+      execute-keys "<a-n>n"
+    }
+  }
+
+  # Align the table enclosing the cursor: compute per-column widths and
+  # rewrite every row with padded cells (separator rows get dash runs of
+  # width+2, at least three dashes). Runs via the shell library, so it works
+  # with uneven rows and keeps the first line's indentation.
+  define-command render-markdown-table-format %{
+    evaluate-commands -save-regs m %{
+      render-markdown-table-select
+      evaluate-commands %sh{
+        eval "$kak_opt__render_markdown_sh_lib"
+        aligned=$(printf '%s' "$kak_selection" | render_markdown_table_align)
+        printf "set-register m '%s'\n" "$(rm_quote "$aligned")"
+      }
+      execute-keys 'd"mp'
+    }
+  }
+
   define-command -hidden _render-markdown-update %{
     set-option window _render_markdown_bare_ranges
     set-option global _render_markdown_consumed_lines
     evaluate-commands -draft %{
       # matcher table: ordered, one command per feature, in original order;
-      # each matcher re-selects the whole buffer (gtGbx) before its search
+      # each matcher re-selects the viewable buffer (gtGbx) before its search
       _render-markdown-match-headings
       _render-markdown-match-codeblocks
       _render-markdown-match-lists
       _render-markdown-match-hrules
       _render-markdown-match-blockquotes
+      _render-markdown-match-tables
       _render-markdown-match-links
       _render-markdown-match-emphasis
     }
