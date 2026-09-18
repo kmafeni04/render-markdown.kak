@@ -28,8 +28,8 @@ This is `text` with inline `code`
 
 ```
 
-```
-# Markdown will still render in blocks that don't have a defined language
+```markdown
+# Rendered in a markdown-tagged fence
 ```
 
 ```lua

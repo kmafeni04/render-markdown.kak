@@ -39,10 +39,30 @@ Currently the plugin supports rendering
 All rendered faces are set with `render_markdown_*` options
 You can make changes to them according to your taste
 
+## Testing
+
+Local, POSIX-only test suite (verified under `dash`):
+
+```sh
+dash test/run.sh [unit|integration|smoke|bless|lint|all]
+```
+
+- `unit` — pure-shell tests for the classifier library (no Kakoune needed)
+- `integration` — runs each fixture through a headless Kakoune session
+  (via tmux) and diffs the emitted range-specs against committed goldens
+- `smoke` — checks the replace-ranges highlighter really renders glyphs
+- `bless` — regenerates goldens from current output (use when behaviour
+  intentionally changes)
+- `lint` — shellcheck on all shell scripts
+
+Requires `dash`, `kak` and `tmux`. When a golden changes, review the diff
+and re-bless only if the change is intended.
+
 ## Known Issues
 - Blockquotes `>` have to be followed by a horizontal space or they will not render
   - This is done so the original character can be seen when the cursor hovers over the position
-- Headings `#*` are not rendered when they are in between codeblocks that don't have an assigned language
+- Inline formatting inside headings (bold, italic, code, links) renders at one
+  level only — nested emphasis spans inside headings are not parsed
 - No rendering for tables (Not really planned)
 
 ## Reference

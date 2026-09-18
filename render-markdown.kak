@@ -1,6 +1,9 @@
 provide-module render-markdown %{
+
   declare-option -hidden str-list _render_markdown_bare_ranges
   declare-option -hidden range-specs _render_markdown_ranges
+  declare-option -hidden str _render_markdown_kind ''
+  declare-option -hidden str-list _render_markdown_consumed_lines ''
 
   declare-option str render_markdown_heading_1 "{blue+f}󰲡"
   declare-option str render_markdown_heading_2 "{green+f} 󰲣"
@@ -31,6 +34,369 @@ provide-module render-markdown %{
   declare-option str render_markdown_bold "{+b@Default}"
   declare-option str render_markdown_inline_code "{cyan,rgb:3e3e3e+f}"
 
+  # Test-only: when set to a file path, every emitted range is also appended
+  # verbatim (one per line). Used by test/integration/run-fixture.sh to build
+  # and check golden files; unset (default) means no extra runtime work.
+  declare-option -hidden str _render_markdown_debug_file ''
+
+  # begin-sh-lib
+  # Embedded POSIX shell library (dash-verified), eval'd from the %sh blocks
+  # below. NOTE: braces must stay balanced because Kakoune tracks them in
+  # %{...} strings.
+  declare-option -hidden str _render_markdown_sh_lib %{
+    # kakoune single-quote escaping: ' becomes ''
+    rm_quote() {
+      printf '%s' "$1" | sed "s/'/''/g"
+    }
+
+    # emit one bare range: <desc>|<face><text>, + debug-file mirror
+    rm_emit() {
+      range="$kak_selection_desc|$(rm_escape "$2$3")"
+      printf "set-option -add window _render_markdown_bare_ranges '%s'\n" "$(rm_quote "$range")"
+      if [ -n "$kak_opt__render_markdown_debug_file" ]; then
+        printf '%s\n' "$range" >> "$kak_opt__render_markdown_debug_file"
+      fi
+    }
+
+    rm_strip() {
+      printf '%s' "$1" | tr -d "$2"
+    }
+
+    # escape | and \ per the range-specs syntax
+    rm_escape() {
+      printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/|/\\|/g'
+    }
+
+    # start line of the current selection descriptor (a.b,c.d -> a)
+    rm_line() {
+      printf '%s' "$kak_selection_desc" | sed 's/\..*//'
+    }
+
+    # true when the current selection's line is heading-consumed
+    rm_consumed() {
+      case " $kak_opt__render_markdown_consumed_lines " in
+        *" $(rm_line) "*) return 0 ;;
+        *) return 1 ;;
+      esac
+    }
+
+    # face option for an inline span kind
+    rm_inline_face() {
+      case "$1" in
+        bold)  printf '%s' "$kak_opt_render_markdown_bold" ;;
+        italic) printf '%s' "$kak_opt_render_markdown_italics" ;;
+        strike) printf '%s' "$kak_opt_render_markdown_strikethrough" ;;
+        code)  printf '%s' "$kak_opt_render_markdown_inline_code" ;;
+        link)  printf '%s' "$kak_opt_render_markdown_link_link" ;;
+        web)   printf '%s' "$kak_opt_render_markdown_link_web" ;;
+        image) printf '%s' "$kak_opt_render_markdown_link_image" ;;
+      esac
+    }
+
+    # earliest span delimiter in $s, or empty
+    rm_next_delim() {
+      best=9999
+      found=
+      for tok in '`' '**' '__' '~~' '![' '[' '_' '*'; do
+        case "$s" in
+          *"$tok"*)
+            front=${s%%"$tok"*}
+            pos=${#front}
+            if [ "$pos" -lt "$best" ]; then best=$pos; found=$tok; fi
+            ;;
+        esac
+      done
+      printf '%s' "$found"
+    }
+
+    # render inline markdown spans in heading content as face markup.
+    # Single level (no nesting); unrecognised text passes through.
+    rm_inline() {
+      s=$1
+      out=
+      while [ -n "$s" ]; do
+        d=$(rm_next_delim)
+        if [ -z "$d" ]; then
+          out="$out$s"
+          break
+        fi
+        front=${s%%"$d"*}
+        out="$out$front"
+        s=${s#"$front"}
+        s=${s#"$d"}
+        case "$d" in
+          '`')
+            case "$s" in
+              *\`*)
+                inner=${s%%\`*}
+                out="$out$(rm_inline_face code)$inner{Default}"
+                s=${s#*"$inner"\`} ;;
+              *) out="$out\`$s"; s= ;;
+            esac ;;
+          '**'|'__'|'~~'|'*'|'_')
+            case "$d" in
+              '**'|'__') face=bold ;;
+              '~~')      face=strike ;;
+              '*'|'_')   face=italic ;;
+            esac
+            case "$s" in
+              *"$d"*)
+                inner=${s%%"$d"*}
+                out="$out$(rm_inline_face "$face")$inner{Default}"
+                s=${s#*"$inner""$d"} ;;
+              *) out="$out$d$s"; s= ;;
+            esac ;;
+          '![')
+            case "$s" in
+              *\]*)
+                label=${s%%\]*}
+                out="$out$(rm_inline_face image)$label{Default}"
+                s=${s#*"$label"]}
+                # drop the (url) part
+                case "$s" in
+                  \(*\)) s=${s#\(}; s=${s#*\)} ;;
+                esac ;;
+            esac ;;
+          '[')
+            case "$s" in
+              *\]\(*)
+                label=${s%%\]*}
+                rest=${s#*"$label"]}
+                case "$rest" in
+                  \(*\))
+                    url=${rest#\(}; url=${url%%\)*}
+                    case "$url" in
+                      *http*) out="$out$(rm_inline_face web)$label{Default}" ;;
+                      *)      out="$out$(rm_inline_face link)$label{Default}" ;;
+                    esac
+                    s=${rest#\("$url"\)} ;;
+                  *) out="$out[$label$rest"; s= ;;
+                esac ;;
+              *) out="$out[$s"; s= ;;
+            esac ;;
+        esac
+      done
+      printf '%s' "$out"
+    }
+
+    render_markdown_classify() {
+      kind=$1
+      case "$kind" in
+        heading)
+          level=$(printf '%s' "$kak_selection" | grep -o '^#*' | wc -c)
+          level=$((level - 1))
+          if [ "$level" -gt 6 ]; then exit 0; fi
+          eval "face=\$kak_opt_render_markdown_heading_$level"
+          content=$(printf '%s' "$kak_selection" | sed -e 's/^#*//' -e "s/'/''/g")
+          rm_emit heading "$face" "$(rm_inline "$content")"
+          # the whole heading line is consumed; inline kinds must not match inside it
+          printf "set-option -add global _render_markdown_consumed_lines %s\n" "$(rm_line)" ;;
+        list)
+          case "$kak_selection" in
+            -*\[x\]*)   face=$kak_opt_render_markdown_checkbox_checked ;;
+            -*\[*\]*)   face=$kak_opt_render_markdown_checkbox_unchecked ;;
+            *)          face=$kak_opt_render_markdown_bullet ;;
+          esac
+          rm_emit list "$face" '' ;;
+        hrule)
+          rm_emit hrule "$kak_opt_render_markdown_horizontal_rule" '' ;;
+        blockquote)
+          rm_emit blockquote "$kak_opt_render_markdown_blockquote" '' ;;
+        link)
+          if rm_consumed; then exit 0; fi
+          content=$(printf '%s' "$kak_selection" | sed -e 's/^!//' -e 's/^\[//' -e 's/\]\(.*\)$//' -e 's/\]\[.*$//' -e "s/'/''/g")
+          case "$kak_selection" in
+            !*)    face=$kak_opt_render_markdown_link_image ;;
+            *http*) face=$kak_opt_render_markdown_link_web ;;
+            *)     face=$kak_opt_render_markdown_link_link ;;
+          esac
+          rm_emit link "$face" "$content" ;;
+        link-mail)
+          if rm_consumed; then exit 0; fi
+          content=$(printf '%s' "$kak_selection" | sed -e 's/^<//' -e 's/>$//' -e "s/'/''/g")
+          rm_emit link "$kak_opt_render_markdown_link_mail" "$content" ;;
+        codeblock-start)
+          rm_emit codeblock "$kak_opt_render_markdown_codeblock_start" '' ;;
+        codeblock-end)
+          rm_emit codeblock "$kak_opt_render_markdown_codeblock_end" '' ;;
+        inline-code)
+          rm_emit code "$kak_opt_render_markdown_inline_code" "$(rm_strip "$kak_selection" '`')" ;;
+        strike)
+          rm_emit strike "$kak_opt_render_markdown_strikethrough" "$(rm_strip "$kak_selection" '~')" ;;
+        emphasis)
+          if rm_consumed; then exit 0; fi
+          # dispatch by first marker char: ~ strike, ` inline code, _/* em
+          start=$(printf '%.1s' "$kak_selection")
+          case "$start" in
+            '~') render_markdown_classify strike ;;
+            '`') render_markdown_classify inline-code ;;
+            '*'|'_')
+              case "$kak_selection" in
+                __*|\*\**) render_markdown_classify em-double ;;
+                *) render_markdown_classify em-single ;;
+              esac
+              ;;
+          esac
+          ;;
+        em-double)
+          # **x** / __x__ -> bold face (markdown semantics)
+          case "$kak_selection" in
+            __*) face=$kak_opt_render_markdown_bold; content=$(rm_strip "$kak_selection" '_') ;;
+            *)   face=$kak_opt_render_markdown_bold; content=$(rm_strip "$kak_selection" '*') ;;
+          esac
+          rm_emit em "$face" "$content" ;;
+        em-single)
+          # *x* / _x_ -> italics face (markdown semantics)
+          case "$kak_selection" in
+            _*) face=$kak_opt_render_markdown_italics; content=$(rm_strip "$kak_selection" '_') ;;
+            *)  face=$kak_opt_render_markdown_italics; content=$(rm_strip "$kak_selection" '*') ;;
+          esac
+          rm_emit em "$face" "$content" ;;
+      esac
+    }
+  }
+  # end-sh-lib
+
+  # shared per-selection pipeline: skip selections inside a language-tagged
+  # code fence, then classify + emit. $1 = classification kind.
+  define-command -hidden _render-markdown-handle -params 1 %{
+    set-option global _render_markdown_kind %arg{1}
+    evaluate-commands -save-regs 'i' -itersel %{
+      set-register i ''
+      evaluate-commands -draft %{
+        try %{
+          execute-keys "<a-a>c```\w*,```<ret><a-:><a-semicolon><semicolon>xs^\h*```\w*<ret>"
+          evaluate-commands %sh{
+            if ! printf '%s' "$kak_selection" | grep 'markdown'; then
+              printf "set-register i 'inside'\n"
+            fi
+          }
+        }
+      }
+      evaluate-commands %sh{
+        # Ensure Kakoune passes all option vars used by the classifier.
+        # kak_opt_render_markdown_heading_1 kak_opt_render_markdown_heading_2
+        # kak_opt_render_markdown_heading_3 kak_opt_render_markdown_heading_4
+        # kak_opt_render_markdown_heading_5 kak_opt_render_markdown_heading_6
+        # kak_opt_render_markdown_checkbox_checked kak_opt_render_markdown_checkbox_unchecked
+        # kak_opt_render_markdown_bullet kak_opt_render_markdown_horizontal_rule
+        # kak_opt_render_markdown_blockquote kak_opt_render_markdown_link_image
+        # kak_opt_render_markdown_link_web kak_opt_render_markdown_link_link
+        # kak_opt_render_markdown_link_mail kak_opt_render_markdown_codeblock_start
+        # kak_opt_render_markdown_codeblock_end kak_opt_render_markdown_strikethrough
+        # kak_opt_render_markdown_italics kak_opt_render_markdown_bold
+        # kak_opt_render_markdown_inline_code kak_opt__render_markdown_debug_file
+        # kak_opt__render_markdown_consumed_lines kak_selection kak_selection_desc kak_main_reg_i
+        if [ -n "$kak_main_reg_i" ]; then
+          exit 0
+        fi
+        eval "$kak_opt__render_markdown_sh_lib"
+        render_markdown_classify "$kak_opt__render_markdown_kind"
+      }
+    }
+  }
+
+  # static-face emit for codeblock markers (no fence guard)
+  define-command -hidden _render-markdown-emit-static -params 1 %{
+    set-option global _render_markdown_kind %arg{1}
+    evaluate-commands %sh{
+      # Only codeblock faces are used here; env-var refs must be declared in
+      # each block that uses them (see _render-markdown-handle for the full set).
+      # kak_opt_render_markdown_codeblock_start kak_opt_render_markdown_codeblock_end
+      # kak_opt__render_markdown_debug_file kak_selection kak_selection_desc
+      eval "$kak_opt__render_markdown_sh_lib"
+      render_markdown_classify "$kak_opt__render_markdown_kind"
+    }
+  }
+
+  define-command -hidden _render-markdown-match-headings %{
+    evaluate-commands -draft %{
+      execute-keys "gtGbx"
+      try %{
+        execute-keys "s^>?\h*#+\s<ret>s#+<ret>Gl"
+        _render-markdown-handle heading
+      }
+    }
+  }
+
+  define-command -hidden _render-markdown-match-codeblocks %{
+    evaluate-commands -draft %{
+      execute-keys "gtGbx"
+      try %{
+        execute-keys "%%s```[\w+-]*\n((?:(?!```).)*)\n[^\n]*```<ret>"
+        evaluate-commands -itersel -draft %{
+          execute-keys "<a-:><a-semicolon><semicolon>xs```<ret>"
+          _render-markdown-emit-static codeblock-start
+        }
+        evaluate-commands -itersel -draft %{
+          execute-keys "<a-:><semicolon>xs```<ret>"
+          _render-markdown-emit-static codeblock-end
+        }
+      }
+    }
+  }
+
+  define-command -hidden _render-markdown-match-lists %{
+    evaluate-commands -draft %{
+      execute-keys "gtGbx"
+      try %{
+        execute-keys "s^\h*>?\h*>*(-\h\[[x<space>]\]|[-*+]\h)<ret>s(-\h\[[x<space>]\]|[-*+]\h)<ret>_L"
+        _render-markdown-handle list
+      }
+    }
+  }
+
+  define-command -hidden _render-markdown-match-hrules %{
+    evaluate-commands -draft %{
+      execute-keys "gtGbx"
+      try %{
+        execute-keys "s^\h*>?\h*>*(-{4,}|_{4,}|\*{4,})\n<ret>s[-_*]+<ret>"
+        _render-markdown-handle hrule
+      }
+    }
+  }
+
+  define-command -hidden _render-markdown-match-blockquotes %{
+    evaluate-commands -draft %{
+      execute-keys "gtGbx"
+      try %{
+        execute-keys "s^\h*<gt><ret>Gls<gt>\h<ret>"
+        _render-markdown-handle blockquote
+      }
+    }
+  }
+
+  define-command -hidden _render-markdown-match-links %{
+    evaluate-commands -draft %{
+      execute-keys "gtGbx"
+      try %{
+        execute-keys "s!?\[[^\[]+\]\([^\(]+\)<ret>"
+        _render-markdown-handle link
+      }
+      try %{
+        execute-keys "gtGbx"
+        execute-keys "s!?\[[^\[]+\]\[[^\[]+\]<ret>"
+        _render-markdown-handle link
+      }
+      try %{
+        execute-keys "gtGbx"
+        execute-keys "s<lt>\S+@\S+\.[^\n]+<gt><ret>"
+        _render-markdown-handle link-mail
+      }
+    }
+  }
+
+  # emphasis family: combined regex from original, kept for reliable overlap
+  # handling; per-match kind is decided by the library's emphasis dispatcher
+  define-command -hidden _render-markdown-match-emphasis %{
+    evaluate-commands -draft %{
+      execute-keys "gtGbx"
+      try %{
+        execute-keys "s(?<lt>!\w)(?<lt>!\\)(?:`[^`\n]+`|(?<lt>!\*)\*\*[^*\n]+\*\*(?!\*)|(?<lt>!_)__[^_\n]+__(?!_)|~~[^~\n]+~~|(?<lt>!\*)\*[^*\n]+\*(?!\*)|(?<lt>!_)_[^_\n]+_(?!_))(?!\w)<ret>"
+        _render-markdown-handle emphasis
+      }
+    }
+  }
 
   define-command render-markdown-enable %{
     hook -group render-markdown-update window NormalIdle .* _render-markdown-update
@@ -52,431 +418,19 @@ provide-module render-markdown %{
 
   define-command -hidden _render-markdown-update %{
     set-option window _render_markdown_bare_ranges
-    try %{
-      evaluate-commands -draft %{
-        execute-keys "gtGbx"
-
-        # Headings
-        evaluate-commands -draft %{
-          try %{
-            execute-keys "s^>?\h*#+\s<ret>s#+<ret>Gl"
-            evaluate-commands -save-regs 'i' -itersel %{
-              set-register i ''
-              evaluate-commands -draft %{
-                try %{
-                  execute-keys "<a-a>c```\w,```<ret><a-:><a-semicolon><semicolon>xs^\h*```\w<ret>"
-                  evaluate-commands %sh{
-                    if ! printf '%s' "$kak_selection" | grep 'markdown'; then
-                      printf "set-register i 'inside'\n"
-                    fi
-                  }
-                }
-              }
-              evaluate-commands %sh{
-                if [ -n "$kak_main_reg_i" ]; then
-                  exit
-                fi
-                heading_level="$(printf '%s' "$kak_selection" | grep -o '^#*' | wc -m)"
-                heading_level=$((heading_level - 1))
-                content="$(printf '%s' "$kak_selection" | sed -E "s/^#+//;s/'/\'\'/g")"
-
-                heading_range="$kak_selection_desc|"
-                if [ $heading_level -gt 6 ]; then
-                  exit
-                elif [ $heading_level -eq 6 ]; then
-                  heading_range="${heading_range}${kak_opt_render_markdown_heading_6}"
-                elif [ $heading_level -eq 5 ]; then
-                  heading_range="${heading_range}${kak_opt_render_markdown_heading_5}"
-                elif [ $heading_level -eq 4 ]; then
-                  heading_range="${heading_range}${kak_opt_render_markdown_heading_4}"
-                elif [ $heading_level -eq 3 ]; then
-                  heading_range="${heading_range}${kak_opt_render_markdown_heading_3}"
-                elif [ $heading_level -eq 2 ]; then
-                  heading_range="${heading_range}${kak_opt_render_markdown_heading_2}"
-                elif [ $heading_level -eq 1 ]; then
-                  heading_range="${heading_range}${kak_opt_render_markdown_heading_1}"
-                fi
-                heading_range="${heading_range}${content}"
-
-                printf "set-option -add window _render_markdown_bare_ranges '%s'\n" "$heading_range"
-              }
-            }
-          }
-        }
-
-        # Code-blocks
-        evaluate-commands -draft %{
-          try %{
-            execute-keys "%%s```[\w+-]*\n((?:(?!```).)*)\n[^\n]*```<ret>" # '%' as ``` will break if start and end are not both in view
-            evaluate-commands -itersel -draft %{
-              execute-keys "<a-:><a-semicolon><semicolon>xs```<ret>"
-              set-option -add window _render_markdown_bare_ranges "%val{selection_desc}|%opt{render_markdown_codeblock_start}"
-            }
-            evaluate-commands -itersel -draft %{
-              execute-keys "<a-:><semicolon>xs```<ret>"
-              set-option -add window _render_markdown_bare_ranges "%val{selection_desc}|%opt{render_markdown_codeblock_end}"
-            }
-          }
-        }
-
-        # Checkboxes and list items
-        evaluate-commands -draft %{
-          try %{
-            execute-keys "s^\h*>?\h*>*(-\h\[[x<space>]\]|[-*+]\h)<ret>s(-\h\[[x<space>]\]|[-*+]\h)<ret>_L"
-            evaluate-commands -save-regs 'i' -itersel %{
-              set-register i ''
-              evaluate-commands -draft %{
-                try %{
-                  execute-keys "<a-a>c```\w,```<ret><a-:><a-semicolon><semicolon>xs^\h*```\w<ret>"
-                  evaluate-commands %sh{
-                    if ! printf '%s' "$kak_selection" | grep 'markdown'; then
-                      printf "set-register i 'inside'\n"
-                    fi
-                  }
-                }
-              }
-              evaluate-commands %sh{
-                if [ -n "$kak_main_reg_i" ]; then
-                  exit
-                fi
-                if printf '%s' "$kak_selection" | grep -Poq -- '-\s\['; then
-                  if  printf '%s' "$kak_selection" | grep -oq x; then
-                    printf "set-option -add window _render_markdown_bare_ranges '%s'\n" \
-                      "$kak_selection_desc|$kak_opt_render_markdown_checkbox_checked"
-                  else
-                    printf "set-option -add window _render_markdown_bare_ranges '%s'\n" \
-                      "$kak_selection_desc|$kak_opt_render_markdown_checkbox_unchecked"
-                  fi
-                else
-                  printf "set-option -add window _render_markdown_bare_ranges '%s'\n" "$kak_selection_desc|$kak_opt_render_markdown_bullet"
-                fi
-              }
-            }
-          }
-        }
-
-        # Horizontal Ruules
-        evaluate-commands -draft %{
-          try %{
-            execute-keys "s^\h*>?\h*>*----*\n<ret>s-+<ret>"
-            evaluate-commands -save-regs 'i' -itersel %{
-              set-register i ''
-              evaluate-commands -draft %{
-                try %{
-                  execute-keys "<a-a>c```\w,```<ret><a-:><a-semicolon><semicolon>xs^\h*```\w<ret>"
-                  evaluate-commands %sh{
-                    if ! printf '%s' "$kak_selection" | grep 'markdown'; then
-                      printf "set-register i 'inside'\n"
-                    fi
-                  }
-                }
-              }
-              evaluate-commands %sh{
-                if [ -n "$kak_main_reg_i" ]; then
-                  printf "fail\n"
-                fi
-              }
-              set-option -add window _render_markdown_bare_ranges "%val{selection_desc}|%opt{render_markdown_horizontal_rule}"
-            }
-          }
-        }
-        evaluate-commands -draft %{
-          try %{
-            execute-keys "s^\h*>?\h*>*____*\n<ret>s_+<ret>"
-            evaluate-commands -save-regs 'i' -itersel %{
-              set-register i ''
-              evaluate-commands -draft %{
-                try %{
-                  execute-keys "<a-a>c```\w,```<ret><a-:><a-semicolon><semicolon>xs^\h*```\w<ret>"
-                  evaluate-commands %sh{
-                    if ! printf '%s' "$kak_selection" | grep 'markdown'; then
-                      printf "set-register i 'inside'\n"
-                    fi
-                  }
-                }
-              }
-              evaluate-commands %sh{
-                if [ -n "$kak_main_reg_i" ]; then
-                  printf "fail\n"
-                fi
-              }
-              set-option -add window _render_markdown_bare_ranges "%val{selection_desc}|%opt{render_markdown_horizontal_rule}"
-            }
-          }
-        }
-        evaluate-commands -draft %{
-          try %{
-            execute-keys "s^\h*>?\h*>*\*\*\*\**\n<ret>s\*+<ret>"
-            evaluate-commands -save-regs 'i' -itersel %{
-              set-register i ''
-              evaluate-commands -draft %{
-                try %{
-                  execute-keys "<a-a>c```\w,```<ret><a-:><a-semicolon><semicolon>xs^\h*```\w<ret>"
-                  evaluate-commands %sh{
-                    if ! printf '%s' "$kak_selection" | grep 'markdown'; then
-                      printf "set-register i 'inside'\n"
-                    fi
-                  }
-                }
-              }
-              evaluate-commands %sh{
-                if [ -n "$kak_main_reg_i" ]; then
-                  printf "fail\n"
-                fi
-              }
-              set-option -add window _render_markdown_bare_ranges "%val{selection_desc}|%opt{render_markdown_horizontal_rule}"
-            }
-          }
-        }
-
-        # Block Quotes
-        evaluate-commands -draft %{
-          try %{
-            execute-keys "s^\h*<gt><ret>Gls<gt>\h<ret>"
-            evaluate-commands -save-regs 'i' -itersel %{
-              set-register i ''
-              evaluate-commands -draft %{
-                try %{
-                  execute-keys "<a-a>c```\w,```<ret><a-:><a-semicolon><semicolon>xs^\h*```\w<ret>"
-                  evaluate-commands %sh{
-                    if ! printf '%s' "$kak_selection" | grep 'markdown'; then
-                      printf "set-register i 'inside'\n"
-                    fi
-                  }
-                }
-              }
-              evaluate-commands %sh{
-                if [ -n "$kak_main_reg_i" ]; then
-                  printf "fail\n"
-                fi
-              }
-              set-option -add window _render_markdown_bare_ranges "%val{selection_desc}|%opt{render_markdown_blockquote}"
-            }
-          }
-        }
-
-
-        # Links
-        evaluate-commands -draft %{
-          try %{
-            execute-keys "s!?\[[^\[]+\]\([^\(]+\)<ret>"
-            evaluate-commands -save-regs 'i' -itersel %{
-              set-register i ''
-              evaluate-commands -draft %{
-                try %{
-                  execute-keys "<a-a>c```\w,```<ret><a-:><a-semicolon><semicolon>xs^\h*```\w<ret>"
-                  evaluate-commands %sh{
-                    if ! printf '%s' "$kak_selection" | grep 'markdown'; then
-                      printf "set-register i 'inside'\n"
-                    fi
-                  }
-                }
-              }
-              evaluate-commands %sh{
-                if [ -n "$kak_main_reg_i" ]; then
-                  exit
-                fi
-                content="$(printf '%s' "$kak_selection" | grep -Po '\[.+\]' | sed "s/^\[//;s/\]$//;s/'/\'\'/g")"
-                if [ "$(printf '%s' "$kak_selection" | cut -c 1)" = "!" ]; then
-                  printf "set-option -add window _render_markdown_bare_ranges '%s'\n" \
-                    "$kak_selection_desc|${kak_opt_render_markdown_link_image}${content}"
-                elif printf '%s' "$kak_selection" | grep -Poq '\(https?://'; then
-                  printf "set-option -add window _render_markdown_bare_ranges '%s'\n" \
-                    "$kak_selection_desc|${kak_opt_render_markdown_link_web}${content}"
-                else
-                  printf "set-option -add window _render_markdown_bare_ranges '%s'\n" \
-                    "$kak_selection_desc|${kak_opt_render_markdown_link_link}${content}"
-                fi
-              }
-            }
-          }
-        }
-        evaluate-commands -draft %{
-          try %{
-            execute-keys "s!?\[[^\[]+\]\[[^\[]+\]<ret>"
-            evaluate-commands -save-regs 'i' -itersel %{
-              set-register i ''
-              evaluate-commands -draft %{
-                try %{
-                  execute-keys "<a-a>c```\w,```<ret><a-:><a-semicolon><semicolon>xs^\h*```\w<ret>"
-                  evaluate-commands %sh{
-                    if ! printf '%s' "$kak_selection" | grep 'markdown'; then
-                      printf "set-register i 'inside'\n"
-                    fi
-                  }
-                }
-              }
-              evaluate-commands %sh{
-                if [ -n "$kak_main_reg_i" ]; then
-                  exit
-                fi
-                content="$(printf '%s' "$kak_selection" | grep -Po '\[.+\]\[' | sed "s/^\[//g;s/\]\[$//g;s/'/\'\'/g")"
-                printf "set-option -add window _render_markdown_bare_ranges '%s'\n" \
-                  "$kak_selection_desc|${kak_opt_render_markdown_link_link}${content}"
-              }
-            }
-          }
-        }
-        evaluate-commands -draft %{
-          try %{
-            execute-keys "s<lt>\S+@\S+\.[^\n]+<gt><ret>"
-            evaluate-commands -save-regs 'i' -itersel %{
-              set-register i ''
-              evaluate-commands -draft %{
-                try %{
-                  execute-keys "<a-a>c```\w,```<ret><a-:><a-semicolon><semicolon>xs^\h*```\w<ret>"
-                  evaluate-commands %sh{
-                    if ! printf '%s' "$kak_selection" | grep 'markdown'; then
-                      printf "set-register i 'inside'\n"
-                    fi
-                  }
-                }
-              }
-              evaluate-commands %sh{
-                if [ -n "$kak_main_reg_i" ]; then
-                  exit
-                fi
-                content="$(printf '%s' "$kak_selection" | sed "s/^<//;s/>$//;s/'/\'\'/g" )"
-                printf "set-option -add window _render_markdown_bare_ranges '%s'\n" \
-                  "$kak_selection_desc|${kak_opt_render_markdown_link_mail}${content}"
-              }
-            }
-          }
-        }
-
-        # Strikethrough, Italics, Bold and Inline code
-        evaluate-commands -draft %{
-          try %{
-            execute-keys "s(?<lt>!\w)(?<lt>!\\)(?:`[^`\n]+`|(?<lt>!\*)\*\*[^*\n]+\*\*(?!\*)|(?<lt>!_)__[^_\n]+__(?!_)|~~[^~\n]+~~|(?<lt>!\*)\*[^*\n]+\*(?!\*)|(?<lt>!_)_[^_\n]+_(?!_))(?!\w)<ret>"
-            evaluate-commands -save-regs 'i' -itersel %{
-              set-register i ''
-              evaluate-commands -draft %{
-                try %{
-                  execute-keys "<a-a>c```\w,```<ret><a-:><a-semicolon><semicolon>xs^\h*```\w<ret>"
-                  evaluate-commands %sh{
-                    if ! printf '%s' "$kak_selection" | grep 'markdown'; then
-                      printf "set-register i 'inside'\n"
-                    fi
-                  }
-                }
-              }
-              try %{
-                evaluate-commands %sh{
-                  if [ -n "$kak_main_reg_i" ]; then
-                    printf "fail\n"
-                    exit
-                  fi
-                  start=$(printf "%.1s" "$kak_selection")
-                  end=$(printf "%s\n" "$kak_selection" | tail -c 2 | head -c 1)
-                  if [ "$start" = "$end" ]; then
-                    content="$(printf '%s' "$kak_selection" | sed "s/'/\'\'/g")"
-                    case "$start" in
-                      "~")
-                        content="$(printf '%s' "$content" | tr -d '~')"
-                        printf "set-option -add window _render_markdown_bare_ranges '%s'\n" \
-                          "$kak_selection_desc|${kak_opt_render_markdown_strikethrough}${content}"
-                        ;;
-                      "\`")
-                        content="$(printf '%s' "$content" | tr -d '`')"
-                        printf "set-option -add window _render_markdown_bare_ranges '%s'\n" \
-                          "$kak_selection_desc|${kak_opt_render_markdown_inline_code}${content}"
-                        ;;
-                      "_")
-                        replace="$(printf '%s\n' "$content" | tr -d '_')"
-                        case "$content" in
-                          __*)
-                            printf "set-option -add window _render_markdown_bare_ranges '%s'\n" \
-                              "$kak_selection_desc|${kak_opt_render_markdown_italics}${replace}"
-                            ;;
-                          *)
-                            printf "set-option -add window _render_markdown_bare_ranges '%s'\n" \
-                              "$kak_selection_desc|${kak_opt_render_markdown_bold}${replace}"
-                          ;;
-                        esac
-                        ;;
-                      "*")
-                        replace="$(printf '%s\n' "$content" | tr -d '*')"
-                        case "$content" in
-                          \*\**)
-                            printf "set-option -add window _render_markdown_bare_ranges '%s'\n" \
-                              "$kak_selection_desc|${kak_opt_render_markdown_italics}${replace}"
-                            ;;
-                          *)
-                            printf "set-option -add window _render_markdown_bare_ranges '%s'\n" \
-                              "$kak_selection_desc|${kak_opt_render_markdown_bold}${replace}"
-                            ;;
-                        esac
-                        ;;
-                    esac
-                    printf "fail\n"
-                  else
-                    printf "execute-keys '<a-:><a-semicolon><semicolon>'\n"
-                    case "$start" in
-                      "\`")
-                        printf "execute-keys 'l<a-a>g'\n"
-                        ;;
-                      "~")
-                        printf "execute-keys 'l<a-a>c~,~<ret>\n"
-                        ;;
-                      "_")
-                        printf "execute-keys 'l<a-a>c_,_<ret>\n"
-                        ;;
-                      "*")
-                        printf "execute-keys 'l<a-a>c\*,\*<ret>\n"
-                        ;;
-                    esac
-                    printf "execute-keys '<a-:><a-semicolon>'\n"
-                  fi
-                }
-                evaluate-commands %sh{
-                  start=$(printf "%.1s" "$kak_selection")
-                  content="$(printf '%s' "$kak_selection" | sed "s/'/\'\'/g")"
-                  case "$start" in
-                    "~")
-                      content="$(printf '%s' "$content" | tr -d '~')"
-                      printf "set-option -add window _render_markdown_bare_ranges '%s'\n" \
-                        "$kak_selection_desc|${kak_opt_render_markdown_strikethrough}${content}"
-                      ;;
-                    "\`")
-                      content="$(printf '%s' "$content" | tr -d '`')"
-                      printf "set-option -add window _render_markdown_bare_ranges '%s'\n" \
-                        "$kak_selection_desc|${kak_opt_render_markdown_inline_code}${content}"
-                      ;;
-                    "_")
-                      replace="$(printf '%s\n' "$content" | tr -d '_')"
-                      case "$content" in
-                        __*)
-                          printf "set-option -add window _render_markdown_bare_ranges '%s'\n" \
-                            "$kak_selection_desc|${kak_opt_render_markdown_italics}${replace}"
-                          ;;
-                        *)
-                          printf "set-option -add window _render_markdown_bare_ranges '%s'\n" \
-                            "$kak_selection_desc|${kak_opt_render_markdown_bold}${replace}"
-                        ;;
-                      esac
-                      ;;
-                    "*")
-                      replace="$(printf '%s\n' "$content" | tr -d '*')"
-                      case "$content" in
-                        \*\**)
-                          printf "set-option -add window _render_markdown_bare_ranges '%s'\n" \
-                            "$kak_selection_desc|${kak_opt_render_markdown_italics}${replace}"
-                          ;;
-                        *)
-                          printf "set-option -add window _render_markdown_bare_ranges '%s'\n" \
-                            "$kak_selection_desc|${kak_opt_render_markdown_bold}${replace}"
-                          ;;
-                      esac
-                      ;;
-                  esac
-                }
-              }
-            }
-          }
-        }
-      }
-      set-option window _render_markdown_ranges %val{timestamp} %opt{_render_markdown_bare_ranges}
+    set-option global _render_markdown_consumed_lines
+    evaluate-commands -draft %{
+      # matcher table: ordered, one command per feature, in original order;
+      # each matcher re-selects the whole buffer (gtGbx) before its search
+      _render-markdown-match-headings
+      _render-markdown-match-codeblocks
+      _render-markdown-match-lists
+      _render-markdown-match-hrules
+      _render-markdown-match-blockquotes
+      _render-markdown-match-links
+      _render-markdown-match-emphasis
     }
+    set-option window _render_markdown_ranges %val{timestamp} %opt{_render_markdown_bare_ranges}
   }
 }
 

@@ -1,0 +1,7 @@
+- ![image](test.png)
+- [markdown file](test.md)
+- [python file](test.py)
+- [website](https://test.com)
+- [a|b](pipe.md)
+- [reference][ref]
+- <user@test.com>
