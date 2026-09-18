@@ -195,7 +195,8 @@ check 'content escapes backslash' \
   "${pre}'24.1,24.6|{i}a\\\\b'" \
   "$(run emphasis)"
 
-# rm_inline: heading content with inline spans becomes face markup
+# rm_inline: heading content with inline spans becomes face markup that
+# inherits the heading face (base) and resets back to it
 kak_selection='' kak_selection_desc=''
 export kak_opt_render_markdown_bold='{B}'
 export kak_opt_render_markdown_italics='{I}'
@@ -204,15 +205,16 @@ export kak_opt_render_markdown_inline_code='{C}'
 export kak_opt_render_markdown_link_link='{L}'
 export kak_opt_render_markdown_link_web='{W}'
 export kak_opt_render_markdown_link_image='{I}'
-check 'heading plain content' 'ABC' "$(rm_inline 'ABC')"
-check 'heading bold span' '{B}bold{Default}' "$(rm_inline '**bold**')"
-check 'heading italic span' 'x{I}i{Default}y' "$(rm_inline 'x*i*y')"
-check 'heading code span' 'a {C}c{Default} b' "$(rm_inline 'a `c` b')"
-check 'heading strike span' '{S}g{Default}' "$(rm_inline '~~g~~')"
-check 'heading web link' 'z{W}site{Default}' "$(rm_inline 'z[site](https://x)')"
-check 'heading plain link' 'q{L}f{Default}' "$(rm_inline 'q[f](rel.md)')"
-check 'heading image' '{I}img{Default}' "$(rm_inline '![img](a.png)')"
-check 'heading mixed spans' 'a{B}b{Default} c{I}d{Default}' "$(rm_inline 'a**b** c*d*')"
+check 'heading plain content' 'ABC' "$(rm_inline 'ABC' '{H}')"
+check 'heading bold span' '{H+b}bold{H}' "$(rm_inline '**bold**' '{H}')"
+check 'heading italic span' 'x{H+i}i{H}y' "$(rm_inline 'x*i*y' '{H}')"
+check 'heading code span' 'a {C}c{H} b' "$(rm_inline 'a `c` b' '{H}')"
+check 'heading strike span' '{H+s}g{H}' "$(rm_inline '~~g~~' '{H}')"
+check 'heading web link' 'z{W}site{H}' "$(rm_inline 'z[site](https://x)' '{H}')"
+check 'heading plain link' 'q{L}f{H}' "$(rm_inline 'q[f](rel.md)' '{H}')"
+check 'heading image' '{I}img{H}' "$(rm_inline '![img](a.png)' '{H}')"
+check 'heading mixed spans' 'a{H+b}b{H} c{H+i}d{H}' "$(rm_inline 'a**b** c*d*' '{H}')"
+check 'heading span inherits attr token' '{blue+fb}b{blue+f}' "$(rm_inline '**b**' '{blue+f}')"
 
 if [ "$fails" -gt 0 ]; then
   printf '%s\n' "$(cm_red "FAIL $fails of $((passes+fails)) checks")"

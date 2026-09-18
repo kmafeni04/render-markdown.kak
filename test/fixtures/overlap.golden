@@ -1,6 +1,6 @@
-1.1,1.8|{blue+f}󰲡 {+i@Default}test{Default}
-2.1,2.11|{green+f} 󰲣 {+b@Default}bold{Default}
-3.1,3.10|{yellow+f}  󰲥 {cyan,rgb:3e3e3e+f}code{Default}
-4.1,4.14|{cyan+f}   󰲧 {blue+fu@Default} link{Default}
+1.1,1.8|{blue+f}󰲡 {blue+fi}test{blue+f}
+2.1,2.11|{green+f} 󰲣 {green+fb}bold{green+f}
+3.1,3.10|{yellow+f}  󰲥 {cyan,rgb:3e3e3e+f}code{yellow+f}
+4.1,4.14|{cyan+f}   󰲧 {blue+fu@Default} link{cyan+f}
 6.22,6.30|{blue+fu@Default} link
 6.7,6.14|{+i@Default}italic

@@ -80,17 +80,11 @@ provide-module render-markdown %{
       esac
     }
 
-    # face option for an inline span kind
-    rm_inline_face() {
-      case "$1" in
-        bold)  printf '%s' "$kak_opt_render_markdown_bold" ;;
-        italic) printf '%s' "$kak_opt_render_markdown_italics" ;;
-        strike) printf '%s' "$kak_opt_render_markdown_strikethrough" ;;
-        code)  printf '%s' "$kak_opt_render_markdown_inline_code" ;;
-        link)  printf '%s' "$kak_opt_render_markdown_link_link" ;;
-        web)   printf '%s' "$kak_opt_render_markdown_link_web" ;;
-        image) printf '%s' "$kak_opt_render_markdown_link_image" ;;
-      esac
+    # face markup from a face option like {blue+f}󰲡 -> {blue+f}; the close
+    # brace is built via octal so no brace literal appears in this block
+    rm_head() {
+      cb=$(printf '\175')
+      printf '%s' "${1%%$cb*}$cb"
     }
 
     # earliest span delimiter in $s, or empty
@@ -109,10 +103,15 @@ provide-module render-markdown %{
       printf '%s' "$found"
     }
 
-    # render inline markdown spans in heading content as face markup.
-    # Single level (no nesting); unrecognised text passes through.
+    # render inline markdown spans in heading content as face markup: a span
+    # adds its attribute to the inherited base face and resets to it, so the
+    # whole heading keeps one color (links/code keep their faces). Single
+    # level, no nesting; unrecognised text passes through.
     rm_inline() {
       s=$1
+      base=$2
+      inside=${base#?}
+      inside=${inside%?}
       out=
       while [ -n "$s" ]; do
         d=$(rm_next_delim)
@@ -129,20 +128,26 @@ provide-module render-markdown %{
             case "$s" in
               *\`*)
                 inner=${s%%\`*}
-                out="$out$(rm_inline_face code)$inner{Default}"
+                out="$out$kak_opt_render_markdown_inline_code$inner$base"
                 s=${s#*"$inner"\`} ;;
               *) out="$out\`$s"; s= ;;
             esac ;;
           '**'|'__'|'~~'|'*'|'_')
             case "$d" in
-              '**'|'__') face=bold ;;
-              '~~')      face=strike ;;
-              '*'|'_')   face=italic ;;
+              '**'|'__') attr=b ;;
+              '~~')      attr=s ;;
+              '*'|'_')   attr=i ;;
             esac
             case "$s" in
               *"$d"*)
                 inner=${s%%"$d"*}
-                out="$out$(rm_inline_face "$face")$inner{Default}"
+                # merge the attribute into the base's attribute token:
+                # {blue+f} + b -> {blue+fb}, {blue} + b -> {blue+b}
+                case "$inside" in
+                  *+*) span="{${inside%+*}+${inside##*+}$attr}" ;;
+                  *)   span="{${inside}+$attr}" ;;
+                esac
+                out="$out$span$inner$base"
                 s=${s#*"$inner""$d"} ;;
               *) out="$out$d$s"; s= ;;
             esac ;;
@@ -150,7 +155,7 @@ provide-module render-markdown %{
             case "$s" in
               *\]*)
                 label=${s%%\]*}
-                out="$out$(rm_inline_face image)$label{Default}"
+                out="$out$kak_opt_render_markdown_link_image$label$base"
                 s=${s#*"$label"]}
                 # drop the (url) part
                 case "$s" in
@@ -166,8 +171,8 @@ provide-module render-markdown %{
                   \(*\))
                     url=${rest#\(}; url=${url%%\)*}
                     case "$url" in
-                      *http*) out="$out$(rm_inline_face web)$label{Default}" ;;
-                      *)      out="$out$(rm_inline_face link)$label{Default}" ;;
+                      *http*) out="$out$kak_opt_render_markdown_link_web$label$base" ;;
+                      *)      out="$out$kak_opt_render_markdown_link_link$label$base" ;;
                     esac
                     s=${rest#\("$url"\)} ;;
                   *) out="$out[$label$rest"; s= ;;
@@ -188,7 +193,7 @@ provide-module render-markdown %{
           if [ "$level" -gt 6 ]; then exit 0; fi
           eval "face=\$kak_opt_render_markdown_heading_$level"
           content=$(printf '%s' "$kak_selection" | sed -e 's/^#*//' -e "s/'/''/g")
-          rm_emit heading "$face" "$(rm_inline "$content")"
+          rm_emit heading "$face" "$(rm_inline "$content" "$(rm_head "$face")")"
           # the whole heading line is consumed; inline kinds must not match inside it
           printf "set-option -add global _render_markdown_consumed_lines %s\n" "$(rm_line)" ;;
         list)
