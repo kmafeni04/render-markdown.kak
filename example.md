@@ -52,7 +52,7 @@ Tables render their pipes and separator rows; cell content stays as typed.
 
 ## Code blocks
 
-```txt
+``` txt
 # This heading is NOT rendered (fenced with a non-markdown language)
 ```
 

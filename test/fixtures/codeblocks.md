@@ -14,3 +14,15 @@
 ```lua
 print("hi")
 ```
+
+```lua check-fields.lua
+# not rendered (info string)
+```
+
+```markdown my-notes.md
+# rendered despite the info string
+```
+
+``` lua
+local y = 2
+```

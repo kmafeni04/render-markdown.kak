@@ -508,7 +508,7 @@ render_markdown_table_align() {
     evaluate-commands -draft %{
       execute-keys "gtGbx"
       try %{
-        execute-keys "%%s```[\w+-]*\n((?:(?!```).)*)\n[^\n]*```<ret>"
+        execute-keys "%%s```[^\n]*\n((?:(?!```).)*)\n[^\n]*```<ret>"
         evaluate-commands -itersel -draft %{
           execute-keys "<a-:><a-semicolon><semicolon>xs```<ret>"
           _render-markdown-emit-static codeblock-start
