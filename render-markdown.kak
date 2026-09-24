@@ -123,6 +123,28 @@ provide-module render-markdown %{
       esac
     }
 
+    # ***text*** is bold and italics: merge the two face specs when both are
+    # plain attribute specs ({+b@Default} and {+i@Default} become {+bi@Default}),
+    # otherwise keep the bold face.  ob and cb are the brace characters.
+    rm_merge_triple() { # $1 = bold face, $2 = italics face
+      ob=$(printf '\173')
+      cb=$(printf '\175')
+      bold=${1#$ob}
+      bold=${bold%$cb}
+      italics=${2#$ob}
+      italics=${italics%$cb}
+      case "$bold/$italics" in
+        +*@*/+*@*)
+          bold_attrs=${bold#+}
+          bold_attrs=${bold_attrs%%@*}
+          italic_attrs=${italics#+}
+          italic_attrs=${italic_attrs%%@*}
+          printf '%s' "$ob+$bold_attrs$italic_attrs@${bold#*@}$cb" ;;
+        +*/+*) printf '%s' "$ob${bold#+}${italics#+}$cb" ;;
+        *) printf '%s' "$1" ;;
+      esac
+    }
+
     # earliest span delimiter in $s, or empty
     rm_next_delim() {
       best=9999
@@ -450,12 +472,22 @@ render_markdown_table_align() {
             '`') render_markdown_classify inline-code ;;
             '*'|'_')
               case "$kak_selection" in
+                # longest run first: "__*" also matches "___"
+                ___*|\*\*\**) render_markdown_classify em-triple ;;
                 __*|\*\**) render_markdown_classify em-double ;;
                 *) render_markdown_classify em-single ;;
               esac
               ;;
           esac
           ;;
+        em-triple)
+          # ***x*** / ___x___ -> bold and italics together
+          face=$(rm_merge_triple "$kak_opt_render_markdown_bold" "$kak_opt_render_markdown_italics")
+          case "$kak_selection" in
+            ___*) content=$(rm_strip "$kak_selection" '_') ;;
+            *)    content=$(rm_strip "$kak_selection" '*') ;;
+          esac
+          rm_emit em "$face" "$content" ;;
         em-double)
           # **x** / __x__ -> bold face (markdown semantics)
           case "$kak_selection" in
@@ -536,7 +568,8 @@ render_markdown_table_align() {
     evaluate-commands -draft %{
       execute-keys "gtGbx"
       try %{
-        execute-keys "%%s```[^\n]*\n((?:(?!```).)*)\n[^\n]*```<ret>"
+        # the info string excludes backticks, as CommonMark requires
+        execute-keys "%%s```[^`\n]*\n((?:(?!```).)*)\n[^\n]*```<ret>"
         # Spans of non-markdown fences: inline kinds starting inside are skipped.
         # The opening line mentions markdown exactly when `smarkdown` matches in
         # it, so the try/catch below is the condition.
@@ -650,7 +683,7 @@ render_markdown_table_align() {
     evaluate-commands -draft %{
       execute-keys "gtGbx"
       try %{
-        execute-keys "s(?<lt>!\w)(?<lt>!\\)(?:`[^`\n]+`|(?<lt>!\*)\*\*[^*\n]+\*\*(?!\*)|(?<lt>!_)__[^_\n]+__(?!_)|~~[^~\n]+~~|(?<lt>!\*)\*[^*\n]+\*(?!\*)|(?<lt>!_)_[^_\n]+_(?!_))(?!\w)<ret>"
+        execute-keys "s(?<lt>!\w)(?<lt>!\\)(?:`[^`\n]+`|~~[^~\n]+~~|(?<lt>!\*)(?:\*\*\*[^*\n]+\*\*\*|\*\*[^*\n]+\*\*|\*[^*\n]+\*)(?!\*)|(?<lt>!_)(?:___[^_\n]+___|__[^_\n]+__|_[^_\n]+_)(?!_))(?!\w)<ret>"
         _render-markdown-handle emphasis
       }
     }

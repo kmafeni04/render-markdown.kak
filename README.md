@@ -101,7 +101,6 @@ intended.
 - Inline formatting inside headings (bold, italic, code, links) renders at one
   level only — nested emphasis spans inside headings are not parsed
 - Inline markdown inside table cells is not rendered (cells show the raw text)
-- `***text***` (bold and italics together) is not rendered
 - `---` is also the YAML front-matter delimiter and the setext heading
   underline, so front matter and setext underlines render as thematic breaks
 - Setext headings (`Title` underlined with `===` or `---`) are not rendered

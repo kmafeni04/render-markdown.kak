@@ -14,3 +14,5 @@ should_not_match
 should*not*match
 should__not__match
 should**not**match
+***bold italic***
+___bold italic___

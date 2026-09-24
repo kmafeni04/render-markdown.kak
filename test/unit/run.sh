@@ -171,6 +171,20 @@ check 'single marker -> italics face' \
   "${pre}'19.1,19.5|{i}i'" \
   "$(run emphasis)"
 
+kak_selection='___x___' kak_selection_desc='28.1,28.8'
+check 'triple marker falls back to the bold face' \
+  "${pre}'28.1,28.8|{B}x'" \
+  "$(run emphasis)"
+
+export kak_opt_render_markdown_bold='{+b@Default}'
+export kak_opt_render_markdown_italics='{+i@Default}'
+kak_selection='***b***' kak_selection_desc='29.1,29.8'
+check 'triple marker merges bold and italics' \
+  "${pre}'29.1,29.8|{+bi@Default}b'" \
+  "$(run emphasis)"
+export kak_opt_render_markdown_bold='{B}'
+export kak_opt_render_markdown_italics='{i}'
+
 kak_opt__render_markdown_consumed_lines='1 2'
 kak_selection='*x*' kak_selection_desc='1.3,1.6'
 check 'emphasis skipped on consumed line' '' "$(run emphasis)"
