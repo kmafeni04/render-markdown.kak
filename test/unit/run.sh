@@ -133,16 +133,6 @@ check 'mail link' \
   "${pre}'13.1,13.8|{b}M u@h.c'" \
   "$(run link-mail)"
 
-kak_selection='```sh' kak_selection_desc='14.1,14.6'
-check 'codeblock start' \
-  "${pre}'14.1,14.6|CB'" \
-  "$(run codeblock-start)"
-
-kak_selection='```' kak_selection_desc='15.1,15.4'
-check 'codeblock end' \
-  "${pre}'15.1,15.4|CE'" \
-  "$(run codeblock-end)"
-
 kak_selection='`code`' kak_selection_desc='16.1,16.7'
 check 'inline code' \
   "${pre}'16.1,16.7|{c}code'" \

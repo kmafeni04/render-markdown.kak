@@ -4,6 +4,9 @@ provide-module render-markdown %{
   declare-option -hidden range-specs _render_markdown_ranges
   declare-option -hidden str _render_markdown_kind ''
   declare-option -hidden str-list _render_markdown_consumed_lines ''
+  declare-option -hidden str-list _render_markdown_fence_spans ''
+  declare-option -hidden str-list _render_markdown_fence_starts ''
+  declare-option -hidden str-list _render_markdown_fence_ends ''
 
   declare-option str render_markdown_heading_1 "{blue+f}󰲡"
   declare-option str render_markdown_heading_2 "{green+f} 󰲣"
@@ -48,10 +51,21 @@ provide-module render-markdown %{
   # %{...} strings.
   declare-option -hidden str _render_markdown_sh_lib %{
     # kakoune single-quote escaping: ' becomes ''
+    # Fork-free: these run once per emitted range, and forking sed in them
+    # dominated rendering time on code-block-heavy buffers.
     rm_quote() {
-      printf '%s' "$1" | sed "s/'/''/g"
+      s=$1
+      out=
+      while [ -n "$s" ]; do
+        c=${s%"${s#?}"} # first character of $s
+        s=${s#?}
+        case "$c" in
+          "'") out="$out''" ;;
+          *) out="$out$c" ;;
+        esac
+      done
+      printf '%s' "$out"
     }
-
     # emit a bare range: <desc>|<face><text>, + debug-file mirror. The
     # face/text part is escaped per the range-specs format (| and \);
     # rm_emit_desc takes an explicit descriptor for per-position ranges.
@@ -71,9 +85,19 @@ provide-module render-markdown %{
       printf '%s' "$1" | tr -d "$2"
     }
 
-    # escape | and \ per the range-specs syntax
     rm_escape() {
-      printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/|/\\|/g'
+      s=$1
+      out=
+      while [ -n "$s" ]; do
+        c=${s%"${s#?}"} # first character of $s
+        s=${s#?}
+        case "$c" in
+          \\) out="$out\\\\" ;;
+          '|') out="$out\\|" ;;
+          *) out="$out$c" ;;
+        esac
+      done
+      printf '%s' "$out"
     }
 
     # start line of the current selection descriptor (a.b,c.d -> a)
@@ -399,10 +423,6 @@ render_markdown_table_align() {
           if rm_consumed; then exit 0; fi
           content=$(printf '%s' "$kak_selection" | sed -e 's/^<//' -e 's/>$//' -e "s/'/''/g")
           rm_emit link "$kak_opt_render_markdown_link_mail" "$content" ;;
-        codeblock-start)
-          rm_emit codeblock "$kak_opt_render_markdown_codeblock_start" '' ;;
-        codeblock-end)
-          rm_emit codeblock "$kak_opt_render_markdown_codeblock_end" '' ;;
         inline-code)
           rm_emit code "$kak_opt_render_markdown_inline_code" "$(rm_strip "$kak_selection" '`')" ;;
         strike)
@@ -445,18 +465,7 @@ render_markdown_table_align() {
   # code fence, then classify + emit. $1 = classification kind.
   define-command -hidden _render-markdown-handle -params 1 %{
     set-option global _render_markdown_kind %arg{1}
-    evaluate-commands -save-regs 'i' -itersel %{
-      set-register i ''
-      evaluate-commands -draft %{
-        try %{
-          execute-keys "<a-a>c```\w*,```<ret><a-:><a-semicolon><semicolon>xs^\h*```\w*<ret>"
-          evaluate-commands %sh{
-            if ! printf '%s' "$kak_selection" | grep 'markdown'; then
-              printf "set-register i 'inside'\n"
-            fi
-          }
-        }
-      }
+    evaluate-commands -itersel %{
       evaluate-commands %sh{
         # Ensure Kakoune passes all option vars used by the classifier.
         # kak_opt_render_markdown_heading_1 kak_opt_render_markdown_heading_2
@@ -471,28 +480,30 @@ render_markdown_table_align() {
         # kak_opt_render_markdown_italics kak_opt_render_markdown_bold
         # kak_opt_render_markdown_inline_code kak_opt__render_markdown_debug_file
         # kak_opt_render_markdown_table_separator kak_opt_render_markdown_table_pipe
-        # kak_opt__render_markdown_consumed_lines kak_selection kak_selection_desc kak_main_reg_i
-        if [ -n "$kak_main_reg_i" ]; then
-          exit 0
-        fi
+        # kak_opt__render_markdown_consumed_lines kak_selection kak_selection_desc
+        # kak_opt__render_markdown_fence_spans
+        # Skip matches that start inside a non-markdown code fence (the codeblock
+        # matcher ran first and recorded those spans).
+        line=${kak_selection_desc%%.*}
+        col=${kak_selection_desc#*.}
+        col=${col%%,*}
+        for span in $kak_opt__render_markdown_fence_spans; do
+          start=${span%%,*}
+          end=${span##*,}
+          start_line=${start%%.*}
+          start_col=${start#*.}
+          end_line=${end%%.*}
+          if [ "$line" -ge "$start_line" ] && [ "$line" -le "$end_line" ] &&
+            [ "$col" -ge "$start_col" ]; then
+            exit 0
+          fi
+        done
         eval "$kak_opt__render_markdown_sh_lib"
         render_markdown_classify "$kak_opt__render_markdown_kind"
       }
     }
   }
 
-  # static-face emit for codeblock markers (no fence guard)
-  define-command -hidden _render-markdown-emit-static -params 1 %{
-    set-option global _render_markdown_kind %arg{1}
-    evaluate-commands %sh{
-      # Only codeblock faces are used here; env-var refs must be declared in
-      # each block that uses them (see _render-markdown-handle for the full set).
-      # kak_opt_render_markdown_codeblock_start kak_opt_render_markdown_codeblock_end
-      # kak_opt__render_markdown_debug_file kak_selection kak_selection_desc
-      eval "$kak_opt__render_markdown_sh_lib"
-      render_markdown_classify "$kak_opt__render_markdown_kind"
-    }
-  }
 
   define-command -hidden _render-markdown-match-headings %{
     evaluate-commands -draft %{
@@ -504,18 +515,56 @@ render_markdown_table_align() {
     }
   }
 
+  # Whole-buffer fence scan: cheap, but a shell fork per fence glyph was not, so
+  # the ranges are collected here and emitted in one shell call. Spans of
+  # non-markdown fences are recorded for the guard (see _render-markdown-handle).
   define-command -hidden _render-markdown-match-codeblocks %{
     evaluate-commands -draft %{
       execute-keys "gtGbx"
       try %{
         execute-keys "%%s```[^\n]*\n((?:(?!```).)*)\n[^\n]*```<ret>"
+        # Spans of non-markdown fences: inline kinds starting inside are skipped.
+        # The opening line mentions markdown exactly when `smarkdown` matches in
+        # it, so the try/catch below is the condition.
+        evaluate-commands -itersel -draft %{
+          set-register f "%val{selection_desc}"
+          try %{
+            execute-keys "<a-:><a-semicolon><semicolon>x"
+            execute-keys "smarkdown<ret>"
+          } catch %{
+            evaluate-commands "set-option -add global _render_markdown_fence_spans '%reg{f}'"
+          }
+        }
+        # opening and closing fence markers, emitted in one shell pass below
         evaluate-commands -itersel -draft %{
           execute-keys "<a-:><a-semicolon><semicolon>xs```<ret>"
-          _render-markdown-emit-static codeblock-start
+          set-option -add global _render_markdown_fence_starts "%val{selection_desc}"
         }
         evaluate-commands -itersel -draft %{
           execute-keys "<a-:><semicolon>xs```<ret>"
-          _render-markdown-emit-static codeblock-end
+          set-option -add global _render_markdown_fence_ends "%val{selection_desc}"
+        }
+        evaluate-commands %sh{
+          # env vars must be referenced here (or in a comment) to be exported:
+          # kak_opt__render_markdown_fence_starts kak_opt__render_markdown_fence_ends
+          # kak_opt_render_markdown_codeblock_start
+          # kak_opt_render_markdown_codeblock_end
+          # kak_opt__render_markdown_debug_file
+          eval "$kak_opt__render_markdown_sh_lib"
+          emit_fence_ranges() { # $1 = marker ranges, $2 = escaped face
+            quoted=$(rm_quote "$2")
+            for d in $1; do
+              printf "set-option -add window _render_markdown_bare_ranges '%s|%s'\n" "$d" "$quoted"
+              if [ -n "$kak_opt__render_markdown_debug_file" ]; then
+                printf '%s\n' "$d|$2" >>"$kak_opt__render_markdown_debug_file"
+              fi
+            done
+          }
+          # the face is the same for every fence, so escape it once
+          start_face=$(rm_escape "$kak_opt_render_markdown_codeblock_start")
+          end_face=$(rm_escape "$kak_opt_render_markdown_codeblock_end")
+          emit_fence_ranges "$kak_opt__render_markdown_fence_starts" "$start_face"
+          emit_fence_ranges "$kak_opt__render_markdown_fence_ends" "$end_face"
         }
       }
     }
@@ -649,11 +698,16 @@ render_markdown_table_align() {
   define-command -hidden _render-markdown-update %{
     set-option window _render_markdown_bare_ranges
     set-option global _render_markdown_consumed_lines
+    # a bare set-option clears these str-list accumulators
+    set-option global _render_markdown_fence_spans
+    set-option global _render_markdown_fence_starts
+    set-option global _render_markdown_fence_ends
     evaluate-commands -draft %{
-      # matcher table: ordered, one command per feature, in original order;
-      # each matcher re-selects the viewable buffer (gtGbx) before its search
-      _render-markdown-match-headings
+      # matcher table: one command per feature, each re-selecting the viewable
+      # buffer (gtGbx) before its search. Codeblocks come first because their
+      # whole-buffer scan records the fence spans every other matcher consults.
       _render-markdown-match-codeblocks
+      _render-markdown-match-headings
       _render-markdown-match-lists
       _render-markdown-match-hrules
       _render-markdown-match-blockquotes
