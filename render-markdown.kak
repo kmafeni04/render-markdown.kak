@@ -584,7 +584,7 @@ render_markdown_table_align() {
     evaluate-commands -draft %{
       execute-keys "gtGbx"
       try %{
-        execute-keys "s^\h*>?\h*>*(-{4,}|_{4,}|\*{4,})\n<ret>s[-_*]+<ret>"
+        execute-keys "s^\h*>?\h*>*(-{3,}|_{3,}|\*{3,})\n<ret>s[-_*]+<ret>"
         _render-markdown-handle hrule
       }
     }
