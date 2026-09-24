@@ -31,6 +31,10 @@ larger sample. The render happens automatically a moment after opening (the
 update runs on NormalIdle), so no other setup is needed — just a terminal
 with a nerd-font glyph set.
 
+Only the lines on screen are rendered, so in a long file the rest fills in
+as you scroll; code fences are the exception (their markers are found
+across the whole buffer, since a block can outlive the screen).
+
 The full automated suite is `dash test/run.sh` (see Testing below).
 
 ## Rendering Support
@@ -40,7 +44,7 @@ Currently the plugin supports rendering
 - Codeblocks
 - Checkboxes
 - List bullets
-- Horizontal rules
+- Thematic breaks (`---`, `***`, `___`, and spaced forms such as `- - -`)
 - Blockquotes
 - Links
 - Strikethroughs
@@ -48,6 +52,9 @@ Currently the plugin supports rendering
 - Bold text
 - Inline code
 - Tables (box-drawing grid: │ bars, ├ ┼ ┤ ─ separator line)
+
+Every matcher but the code fence scan looks only at the lines on screen (see
+Quick test), which keeps the update cheap on large files.
 
 ## Customisation
 
@@ -77,7 +84,8 @@ dash test/run.sh [unit|integration|smoke|bless|lint|all]
 - `unit` — pure-shell tests for the classifier library (no Kakoune needed)
 - `integration` — runs each fixture through a headless Kakoune session
   (`kak -ui json`, no terminal needed) and diffs the emitted range-specs
-  against committed goldens
+  against committed goldens. A fixture may carry a `<fixture>.cursor` file
+  naming the line to render from, which covers scrolled viewports
 - `smoke` — checks the replace-ranges highlighter really renders glyphs
 - `bless` — regenerates goldens from current output (use when behaviour
   intentionally changes)
@@ -92,6 +100,13 @@ intended.
 - Inline formatting inside headings (bold, italic, code, links) renders at one
   level only — nested emphasis spans inside headings are not parsed
 - Inline markdown inside table cells is not rendered (cells show the raw text)
+- Ordered lists (`1. item`) are not rendered
+- `***text***` (bold and italics together) is not rendered
+- `---` is also the YAML front-matter delimiter and the setext heading
+  underline, so front matter and setext underlines render as thematic breaks
+- Setext headings (`Title` underlined with `===` or `---`) are not rendered
+- Fences of four or more backticks are not supported: the inner fence is
+  treated as a fence of its own
 
 ## Reference
 - https://github.com/MeanderingProgrammer/render-markdown.nvim
