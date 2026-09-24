@@ -88,6 +88,23 @@ check 'bullet' \
   "${pre}'6.1,6.7|{y}B '" \
   "$(run list)"
 
+kak_selection='1. ' kak_selection_desc='25.1,25.3'
+check 'ordered marker keeps its number' \
+  "${pre}'25.1,25.3|{y}1. '" \
+  "$(run list)"
+
+kak_selection='1) ' kak_selection_desc='26.1,26.3'
+check 'ordered marker with a paren' \
+  "${pre}'26.1,26.3|{y}1) '" \
+  "$(run list)"
+
+export kak_opt_render_markdown_bullet='G '
+kak_selection='2. ' kak_selection_desc='27.1,27.3'
+check 'ordered marker without a bullet face stays unfaced' \
+  "${pre}'27.1,27.3|2. '" \
+  "$(run list)"
+export kak_opt_render_markdown_bullet='{y}B '
+
 kak_selection='------' kak_selection_desc='7.1,7.7'
 check 'hrule' \
   "${pre}'7.1,7.7|{r}HR'

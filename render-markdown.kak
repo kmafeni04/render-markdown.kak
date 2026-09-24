@@ -117,7 +117,10 @@ provide-module render-markdown %{
     # brace is built via octal so no brace literal appears in this block
     rm_head() {
       cb=$(printf '\175')
-      printf '%s' "${1%%$cb*}$cb"
+      case "$1" in
+        *"$cb"*) printf '%s' "${1%%$cb*}$cb" ;;
+        *) printf '' ;;
+      esac
     }
 
     # earliest span delimiter in $s, or empty
@@ -345,12 +348,20 @@ render_markdown_table_align() {
           printf "set-option -add global _render_markdown_consumed_lines %s\n" "$(rm_line)" ;;
         list)
           if rm_consumed; then exit 0; fi
+          content=
           case "$kak_selection" in
-            -*\[x\]*)   face=$kak_opt_render_markdown_checkbox_checked ;;
-            -*\[*\]*)   face=$kak_opt_render_markdown_checkbox_unchecked ;;
-            *)          face=$kak_opt_render_markdown_bullet ;;
+            -*\[x\]*) face=$kak_opt_render_markdown_checkbox_checked ;;
+            -*\[*\]*) face=$kak_opt_render_markdown_checkbox_unchecked ;;
+            [0-9]*)
+              # an ordered marker is content, so it keeps its number.  Reuse
+              # the bullet's face when it has one, so both kinds look alike
+              # (a glyph-only bullet setting leaves the marker unfaced).
+              face=$(rm_head "$kak_opt_render_markdown_bullet")
+              content=$kak_selection
+              ;;
+            *) face=$kak_opt_render_markdown_bullet ;;
           esac
-          rm_emit list "$face" '' ;;
+          rm_emit list "$face" "$content" ;;
         hrule)
           rm_emit hrule "$kak_opt_render_markdown_horizontal_rule" ''
           # the rule line is consumed: emphasis markers inside it must not match
@@ -577,7 +588,7 @@ render_markdown_table_align() {
     evaluate-commands -draft %{
       execute-keys "gtGbx"
       try %{
-        execute-keys "s^\h*>?\h*>*(-\h\[[x<space>]\]|[-*+]\h)<ret>s(-\h\[[x<space>]\]|[-*+]\h)<ret>_L"
+        execute-keys "s^\h*>?\h*>*(-\h\[[x<space>]\]|[-*+]\h|[0-9]{1,9}[.)]\h)<ret>s(-\h\[[x<space>]\]|[-*+]\h|[0-9]{1,9}[.)]\h)<ret>_L"
         _render-markdown-handle list
       }
     }
