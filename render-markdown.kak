@@ -344,6 +344,7 @@ render_markdown_table_align() {
           # the whole heading line is consumed; inline kinds must not match inside it
           printf "set-option -add global _render_markdown_consumed_lines %s\n" "$(rm_line)" ;;
         list)
+          if rm_consumed; then exit 0; fi
           case "$kak_selection" in
             -*\[x\]*)   face=$kak_opt_render_markdown_checkbox_checked ;;
             -*\[*\]*)   face=$kak_opt_render_markdown_checkbox_unchecked ;;
@@ -351,7 +352,9 @@ render_markdown_table_align() {
           esac
           rm_emit list "$face" '' ;;
         hrule)
-          rm_emit hrule "$kak_opt_render_markdown_horizontal_rule" '' ;;
+          rm_emit hrule "$kak_opt_render_markdown_horizontal_rule" ''
+          # the rule line is consumed: emphasis markers inside it must not match
+          printf "set-option -add global _render_markdown_consumed_lines %s\n" "$(rm_line)" ;;
         blockquote)
           # replace the leading '>' run with one glyph per '>' (whitespace is
           # kept): '> ' -> '▋ ', '>text' -> '▋text', '>> t' -> '▋▋ t'
@@ -584,7 +587,7 @@ render_markdown_table_align() {
     evaluate-commands -draft %{
       execute-keys "gtGbx"
       try %{
-        execute-keys "s^\h*>?\h*>*(-{3,}|_{3,}|\*{3,})\n<ret>s[-_*]+<ret>"
+        execute-keys "s^\h*>?\h*>*(-(\h*-){2,}|_(\h*_){2,}|\*(\h*\*){2,})\h*\n<ret>s[-_*](\h*[-_*])*<ret>"
         _render-markdown-handle hrule
       }
     }
@@ -708,8 +711,10 @@ render_markdown_table_align() {
       # whole-buffer scan records the fence spans every other matcher consults.
       _render-markdown-match-codeblocks
       _render-markdown-match-headings
-      _render-markdown-match-lists
+      # hrules before lists: a rule line ("- - -") is consumed by the rule
+      # classifier, so the list matcher does not draw a bullet on it
       _render-markdown-match-hrules
+      _render-markdown-match-lists
       _render-markdown-match-blockquotes
       _render-markdown-match-tables
       _render-markdown-match-links

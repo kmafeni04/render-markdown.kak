@@ -90,7 +90,8 @@ check 'bullet' \
 
 kak_selection='------' kak_selection_desc='7.1,7.7'
 check 'hrule' \
-  "${pre}'7.1,7.7|{r}HR'" \
+  "${pre}'7.1,7.7|{r}HR'
+set-option -add global _render_markdown_consumed_lines 7" \
   "$(run hrule)"
 
 kak_selection='> ' kak_selection_desc='8.1,8.2'
@@ -159,6 +160,9 @@ check 'emphasis skipped on consumed line' '' "$(run emphasis)"
 
 kak_selection='[x](y)' kak_selection_desc='2.4,2.11'
 check 'link skipped on consumed line' '' "$(run link)"
+
+kak_selection='- - -' kak_selection_desc='2.1,2.6'
+check 'list skipped on consumed line (thematic break)' '' "$(run list)"
 
 kak_opt__render_markdown_consumed_lines=''
 
