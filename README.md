@@ -89,7 +89,8 @@ dash test/run.sh [unit|integration|smoke|bless|lint|all]
 - `smoke` — checks the replace-ranges highlighter really renders glyphs
 - `bless` — regenerates goldens from current output (use when behaviour
   intentionally changes)
-- `lint` — shellcheck on all shell scripts
+- `lint` — shellcheck on all shell scripts, plus a plugin sanity check
+  (braces balanced, the embedded shell library parses)
 
 Requires `kak` for the integration and smoke tests. The shell scripts are
 POSIX-only and verified under `dash` (any POSIX sh will also run them).
