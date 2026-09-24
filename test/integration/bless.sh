@@ -11,7 +11,11 @@ command -v kak >/dev/null 2>&1 || {
 
 for f in test/fixtures/*.md; do
   dump=$(mktemp /tmp/rmdump.XXXXXX) || exit 1
-  ./test/integration/run-fixture.sh render-markdown.kak "$f" "$dump"
+  if [ -f "${f%.md}.cursor" ]; then
+    ./test/integration/run-fixture.sh render-markdown.kak "$f" "$dump" "$(cat "${f%.md}.cursor")"
+  else
+    ./test/integration/run-fixture.sh render-markdown.kak "$f" "$dump"
+  fi
   cp "$dump" "${f%.md}.golden"
   rm -f "$dump"
   printf '%s\n' "$(cm_yellow "blessed: ${f%.md}.golden")"
