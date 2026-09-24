@@ -6,3 +6,18 @@
 ###### Heading 6
 
 ####### Seven hashes
+
+Setext one
+==========
+
+Setext two
+----------
+
+# ATX heading
+---
+
+- list item
+---
+
+> quoted
+---

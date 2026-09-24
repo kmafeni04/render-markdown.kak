@@ -185,6 +185,32 @@ check 'triple marker merges bold and italics' \
 export kak_opt_render_markdown_bold='{B}'
 export kak_opt_render_markdown_italics='{i}'
 
+kak_selection='Setext one
+==========' kak_selection_desc='30.1,31.10'
+check 'setext heading level 1' \
+  "${pre}'30.1,30.10|{blue+f}Setext one'
+${pre}'31.1,31.10|'
+set-option -add global _render_markdown_consumed_lines 30
+set-option -add global _render_markdown_consumed_lines 31" \
+  "$(run setext)"
+
+kak_selection='Setext two
+----------' kak_selection_desc='32.1,33.10'
+check 'setext heading level 2' \
+  "${pre}'32.1,32.10|{green+f}Setext two'
+${pre}'33.1,33.10|'
+set-option -add global _render_markdown_consumed_lines 32
+set-option -add global _render_markdown_consumed_lines 33" \
+  "$(run setext)"
+
+kak_selection='- item
+---' kak_selection_desc='34.1,35.3'
+check 'setext ignores a list item (the --- stays a rule)' '' "$(run setext)"
+
+kak_selection='> quoted
+---' kak_selection_desc='36.1,37.3'
+check 'setext ignores a quote' '' "$(run setext)"
+
 kak_opt__render_markdown_consumed_lines='1 2'
 kak_selection='*x*' kak_selection_desc='1.3,1.6'
 check 'emphasis skipped on consumed line' '' "$(run emphasis)"

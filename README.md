@@ -40,7 +40,7 @@ The full automated suite is `dash test/run.sh` (see Testing below).
 ## Rendering Support
 
 Currently the plugin supports rendering
-- Headings
+- Headings (ATX and setext)
 - Codeblocks
 - Checkboxes
 - List markers (bullets, and ordered numbers kept in place)
@@ -101,9 +101,10 @@ intended.
 - Inline formatting inside headings (bold, italic, code, links) renders at one
   level only — nested emphasis spans inside headings are not parsed
 - Inline markdown inside table cells is not rendered (cells show the raw text)
-- `---` is also the YAML front-matter delimiter and the setext heading
-  underline, so front matter and setext underlines render as thematic breaks
-- Setext headings (`Title` underlined with `===` or `---`) are not rendered
+- YAML front matter is not recognised: following CommonMark, its opening
+  `---` is a thematic break and its closing `---` a setext underline
+- Setext headings are recognised for single-line paragraphs only: a list
+  item or blockquote line followed by `---` stays a list or quote plus a rule
 - Fences of four or more backticks are not supported: the inner fence is
   treated as a fence of its own
 

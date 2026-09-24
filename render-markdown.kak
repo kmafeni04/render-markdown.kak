@@ -368,6 +368,28 @@ render_markdown_table_align() {
           rm_emit heading "$face" "$(rm_inline "$content" "$(rm_head "$face")")"
           # the whole heading line is consumed; inline kinds must not match inside it
           printf "set-option -add global _render_markdown_consumed_lines %s\n" "$(rm_line)" ;;
+        setext)
+          # face the text line, hide the underline, consume both
+          if rm_consumed; then exit 0; fi
+          case "$kak_selection" in
+            \>*|[-*+]\ *|[0-9]*.\ *|[0-9]*\)\ *)
+              # a list item or quote is not a paragraph, so "---" stays a rule
+              exit 0 ;;
+          esac
+          nl=$(printf '\n_')  # nl is a newline, to split the two lines apart
+          nl=${nl%_}
+          text=${kak_selection%%"$nl"*}
+          underline=${kak_selection#*"$nl"}
+          underline=${underline%$nl}
+          case "$underline" in
+            =*) face=$kak_opt_render_markdown_heading_1 ;;
+            *) face=$kak_opt_render_markdown_heading_2 ;;
+          esac
+          face=$(rm_head "$face")  # no marker to replace, so no glyph either
+          line=${kak_selection_desc%%.*}
+          rm_emit_desc "$line.1,$line.${#text}" "$face" "$(rm_inline "$text" "$face")"
+          rm_emit_desc "$((line + 1)).1,$((line + 1)).${#underline}" ''
+          printf "set-option -add global _render_markdown_consumed_lines %s\n" "$line" "$((line + 1))" ;;
         list)
           if rm_consumed; then exit 0; fi
           content=
@@ -385,6 +407,7 @@ render_markdown_table_align() {
           esac
           rm_emit list "$face" "$content" ;;
         hrule)
+          if rm_consumed; then exit 0; fi
           rm_emit hrule "$kak_opt_render_markdown_horizontal_rule" ''
           # the rule line is consumed: emphasis markers inside it must not match
           printf "set-option -add global _render_markdown_consumed_lines %s\n" "$(rm_line)" ;;
@@ -557,6 +580,18 @@ render_markdown_table_align() {
       try %{
         execute-keys "s^>?\h*#+\s<ret>s#+<ret>Gl"
         _render-markdown-handle heading
+      }
+    }
+  }
+
+  # Setext headings: a paragraph line followed by "===" (level 1) or "---"
+  # (level 2).
+  define-command -hidden _render-markdown-match-setext %{
+    evaluate-commands -draft %{
+      execute-keys "gtGbx"
+      try %{
+        execute-keys "s^\h*[^\n]+\n\h*(=+|-+)\h*\n<ret>"
+        _render-markdown-handle setext
       }
     }
   }
@@ -755,6 +790,9 @@ render_markdown_table_align() {
       # whole-buffer scan records the fence spans every other matcher consults.
       _render-markdown-match-codeblocks
       _render-markdown-match-headings
+      # setext runs before hrules: its underline is consumed, so "Title" plus
+      # "---" is a heading, while "# Title" plus "---" stays a break
+      _render-markdown-match-setext
       # hrules before lists: a rule line ("- - -") is consumed by the rule
       # classifier, so the list matcher does not draw a bullet on it
       _render-markdown-match-hrules
