@@ -262,6 +262,191 @@ provide-module render-markdown %{
     # closing is the mirror of opening: swap the two sides
     rm_can_close() { rm_can_open "$1" "$3" "$2"; }
 
+    # attribute string for an emphasis bitmask (b=2, i=1, s=4), e.g. 3 -> bi
+    rm_attr_str() {
+      a=$1
+      str=
+      [ $((a & 2)) -ne 0 ] && str="${str}b"
+      [ $((a & 1)) -ne 0 ] && str="${str}i"
+      [ $((a & 4)) -ne 0 ] && str="${str}s"
+      printf '%s' "$str"
+    }
+
+    # face markup for an emphasis bitmask: reset ($3 = 0) or a span on $2
+    rm_face_attr() { # $1 = base face, $2 = base inner, $3 = bitmask
+      if [ "$3" -eq 0 ]; then
+        printf '%s' "$1"
+        return
+      fi
+      str=$(rm_attr_str "$3")
+      case "$2" in
+        *+*) printf '%s' "{${2%+*}+${2##*+}$str}" ;;
+        *) printf '%s' "{${2}+$str}" ;;
+      esac
+    }
+
+    # CommonMark emphasis: scan $1 for "*"/"_" delimiter runs, decide which
+    # can open and close from the flanking rules, then pair them.  A run that
+    # can both open and close cannot pair when the two run lengths sum to a
+    # multiple of 3 unless both are (the "rule of 3").  Positions are 0-based
+    # byte offsets.
+    #   RM_EMP_SPANS = "cstart,cend,mask ..." content spans (mask: i=1 b=2 s=4)
+    #   RM_EMP_USED  = "p1,p2 ..." delimiter-marker ranges to drop
+    rm_emphasis_parse() {
+      str=$1
+      rm_e_n=0
+      pos=0
+      prev=
+      while [ -n "$str" ]; do
+        ch=${str%"${str#?}"}
+        str=${str#?}
+        case "$ch" in
+          '*' | '_')
+            len=1
+            next=${str%"${str#?}"}
+            while [ -n "$str" ] && [ "$next" = "$ch" ]; do
+              str=${str#?}
+              len=$((len + 1))
+              next=${str%"${str#?}"}
+            done
+            rm_e_n=$((rm_e_n + 1))
+            eval "rm_ec$rm_e_n=\$ch"
+            eval "rm_en$rm_e_n=\$len"
+            eval "rm_ep$rm_e_n=\$pos"
+            eval "rm_eb$rm_e_n=\$prev"
+            eval "rm_ea$rm_e_n=\$next"
+            eval "rm_erem$rm_e_n=0"
+            pos=$((pos + len))
+            prev=$ch
+            ;;
+          *)
+            pos=$((pos + 1))
+            prev=$ch
+            ;;
+        esac
+      done
+      i=1
+      while [ "$i" -le "$rm_e_n" ]; do
+        eval "c=\$rm_ec$i; b=\$rm_eb$i; a=\$rm_ea$i"
+        eval "rm_eo$i=0; rm_el$i=0"
+        if rm_can_open "$c" "$b" "$a"; then eval "rm_eo$i=1"; fi
+        if rm_can_close "$c" "$b" "$a"; then eval "rm_el$i=1"; fi
+        i=$((i + 1))
+      done
+      RM_EMP_SPANS=
+      RM_EMP_USED=
+      cur=1
+      while [ "$cur" -le "$rm_e_n" ]; do
+        eval "crem=\$rm_erem$cur; ccl=\$rm_el$cur; cch=\$rm_ec$cur"
+        if [ "$crem" -eq 1 ] || [ "$ccl" -eq 0 ]; then
+          cur=$((cur + 1))
+          continue
+        fi
+        eval "cn=\$rm_en$cur; cpos=\$rm_ep$cur; cco=\$rm_eo$cur"
+        op=$((cur - 1))
+        found=0
+        while [ "$op" -ge 1 ]; do
+          eval "orem=\$rm_erem$op"
+          if [ "$orem" -eq 0 ]; then
+            eval "och=\$rm_ec$op; oco=\$rm_eo$op; ocl=\$rm_el$op; on=\$rm_en$op"
+            if [ "$och" = "$cch" ] && [ "$oco" -eq 1 ]; then
+              odd=0
+              if { [ "$oco" -eq 1 ] && [ "$ocl" -eq 1 ]; } ||
+                { [ "$cco" -eq 1 ] && [ "$ccl" -eq 1 ]; }; then
+                if [ $(((on + cn) % 3)) -eq 0 ] &&
+                  { [ $((on % 3)) -ne 0 ] || [ $((cn % 3)) -ne 0 ]; }; then
+                  odd=1
+                fi
+              fi
+              if [ "$odd" -eq 0 ]; then
+                eval "opos=\$rm_ep$op"
+                found=1
+                break
+              fi
+            fi
+          fi
+          op=$((op - 1))
+        done
+        if [ "$found" -eq 0 ]; then
+          if [ "$cco" -eq 0 ]; then eval "rm_erem$cur=1"; fi
+          cur=$((cur + 1))
+          continue
+        fi
+        if [ "$on" -ge 2 ] && [ "$cn" -ge 2 ]; then use=2; else use=1; fi
+        if [ "$use" -eq 2 ]; then mask=2; else mask=1; fi
+        RM_EMP_SPANS="$RM_EMP_SPANS $((opos + on)),$cpos,$mask"
+        RM_EMP_USED="$RM_EMP_USED $((opos + on - use)),$((opos + on)) $cpos,$((cpos + use))"
+        eval "rm_en$op=$((on - use))"
+        eval "rm_ep$cur=$((cpos + use))"
+        eval "rm_en$cur=$((cn - use))"
+        k=$((op + 1))
+        while [ "$k" -lt "$cur" ]; do
+          eval "rm_erem$k=1"
+          k=$((k + 1))
+        done
+        eval "on=\$rm_en$op; cn=\$rm_en$cur"
+        if [ "$on" -eq 0 ]; then eval "rm_erem$op=1"; fi
+        if [ "$cn" -eq 0 ]; then
+          eval "rm_erem$cur=1"
+          cur=$((cur + 1))
+        fi
+      done
+    }
+
+    # render plain heading/table text (no code, links or strikethrough) using
+    # the spec emphasis spans; byte positions index $1
+    rm_inline_spec() {
+      txt=$1
+      base=$2
+      inside=${base#?}
+      inside=${inside%?}
+      rm_emphasis_parse "$txt"
+      len=${#txt}
+      i=0
+      while [ "$i" -lt "$len" ]; do
+        eval "rm_eattr$i=0; rm_eskip$i=0"
+        i=$((i + 1))
+      done
+      for span in $RM_EMP_SPANS; do
+        cstart=${span%%,*}
+        rest=${span#*,}
+        cend=${rest%%,*}
+        mask=${rest##*,}
+        i=$cstart
+        while [ "$i" -lt "$cend" ]; do
+          eval "rm_eattr$i=$((rm_eattr$i | mask))"
+          i=$((i + 1))
+        done
+      done
+      for mark in $RM_EMP_USED; do
+        i=${mark%%,*}
+        end=${mark#*,}
+        while [ "$i" -lt "$end" ]; do
+          eval "rm_eskip$i=1"
+          i=$((i + 1))
+        done
+      done
+      out=
+      attr=0
+      i=0
+      rest=$txt
+      while [ -n "$rest" ]; do
+        ch=${rest%"${rest#?}"}
+        rest=${rest#?}
+        eval "a=\$rm_eattr$i; sk=\$rm_eskip$i"
+        if [ "$sk" -eq 0 ]; then
+          if [ "$a" -ne "$attr" ]; then
+            attr=$a
+            out="$out$(rm_face_attr "$base" "$inside" "$attr")"
+          fi
+          out="$out$ch"
+        fi
+        i=$((i + 1))
+      done
+      if [ "$attr" -ne 0 ]; then out="$out$base"; fi
+      printf '%s' "$out"
+    }
+
     # render inline markdown spans in heading content as face markup: a span
     # adds its attribute to the inherited base face and resets to it, so the
     # whole heading keeps one color (links/code keep their faces).  Spans are
@@ -271,6 +456,14 @@ provide-module render-markdown %{
     rm_inline() {
       s=$1
       base=$2
+      # plain emphasis (no code, links or strikethrough) uses the spec parser
+      case "$s" in
+        *'`'* | *'['* | *'~'*) ;;
+        *)
+          rm_inline_spec "$s" "$base"
+          return
+          ;;
+      esac
       inside=${base#?}
       inside=${inside%?}
       out=

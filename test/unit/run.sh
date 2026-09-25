@@ -325,6 +325,16 @@ check 'heading opener before space cannot close there' '*a {H+i}b{H}' \
   "$(rm_inline '*a *b*' '{H}')"
 check 'heading emphasis after punctuation' 'foo.{H+i}bar{H}.' \
   "$(rm_inline 'foo.*bar*.' '{H}')"
+check 'heading spec: mismatched underscore run' '__{H+i}x{H}' \
+  "$(rm_inline '___x_' '{H}')"
+check 'heading spec: mismatched underscore run (closing)' '{H+i}x{H}__' \
+  "$(rm_inline '_x___' '{H}')"
+check 'heading spec: rule of 3 leaves inner run literal' '{H+i}foo**bar{H}' \
+  "$(rm_inline '*foo**bar*' '{H}')"
+check 'heading spec: triple run nests' '{H+bi}x{H}' \
+  "$(rm_inline '***x***' '{H}')"
+check 'heading spec: nested strong inside emphasis' '{H+i}foo {H+bi}bar{H+i} baz{H}' \
+  "$(rm_inline '*foo **bar** baz*' '{H}')"
 
 export kak_opt_render_markdown_table_separator='{S}'
 export kak_opt_render_markdown_table_pipe='{P}'
