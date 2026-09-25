@@ -77,7 +77,7 @@ provide-module render-markdown %{
       range="$1|$(rm_escape "$2$3")"
       printf "set-option -add window _render_markdown_bare_ranges '%s'\n" "$(rm_quote "$range")"
       if [ -n "$kak_opt__render_markdown_debug_file" ]; then
-        printf '%s\n' "$range" >> "$kak_opt__render_markdown_debug_file"
+        printf '%s\n' "$range" >>"$kak_opt__render_markdown_debug_file"
       fi
     }
 
@@ -139,7 +139,8 @@ provide-module render-markdown %{
           bold_attrs=${bold_attrs%%@*}
           italic_attrs=${italics#+}
           italic_attrs=${italic_attrs%%@*}
-          printf '%s' "$ob+$bold_attrs$italic_attrs@${bold#*@}$cb" ;;
+          printf '%s' "$ob+$bold_attrs$italic_attrs@${bold#*@}$cb"
+          ;;
         +*/+*) printf '%s' "$ob${bold#+}${italics#+}$cb" ;;
         *) printf '%s' "$1" ;;
       esac
@@ -149,12 +150,15 @@ provide-module render-markdown %{
     rm_next_delim() {
       best=9999
       found=
-      for tok in '`' '**' '__' '~~' '![' '[' '_' '*'; do
+      for tok in '`' '***' '**' '___' '__' '~~' '![' '[' '_' '*'; do
         case "$s" in
           *"$tok"*)
             front=${s%%"$tok"*}
             pos=${#front}
-            if [ "$pos" -lt "$best" ]; then best=$pos; found=$tok; fi
+            if [ "$pos" -lt "$best" ]; then
+              best=$pos
+              found=$tok
+            fi
             ;;
         esac
       done
@@ -163,8 +167,9 @@ provide-module render-markdown %{
 
     # render inline markdown spans in heading content as face markup: a span
     # adds its attribute to the inherited base face and resets to it, so the
-    # whole heading keeps one color (links/code keep their faces). Single
-    # level, no nesting; unrecognised text passes through.
+    # whole heading keeps one color (links/code keep their faces).  Spans are
+    # rendered recursively, so nested emphasis and triple markers work; code
+    # and link labels stay literal.
     rm_inline() {
       s=$1
       base=$2
@@ -187,14 +192,20 @@ provide-module render-markdown %{
               *\`*)
                 inner=${s%%\`*}
                 out="$out$kak_opt_render_markdown_inline_code$inner$base"
-                s=${s#*"$inner"\`} ;;
-              *) out="$out\`$s"; s= ;;
-            esac ;;
-          '**'|'__'|'~~'|'*'|'_')
+                s=${s#*"$inner"\`}
+                ;;
+              *)
+                out="$out\`$s"
+                s=
+                ;;
+            esac
+            ;;
+          '***' | '___' | '**' | '__' | '~~' | '*' | '_')
             case "$d" in
-              '**'|'__') attr=b ;;
-              '~~')      attr=s ;;
-              '*'|'_')   attr=i ;;
+              '***' | '___') attr=bi ;;
+              '**' | '__') attr=b ;;
+              '~~') attr=s ;;
+              '*' | '_') attr=i ;;
             esac
             case "$s" in
               *"$d"*)
@@ -203,162 +214,289 @@ provide-module render-markdown %{
                 # {blue+f} + b -> {blue+fb}, {blue} + b -> {blue+b}
                 case "$inside" in
                   *+*) span="{${inside%+*}+${inside##*+}$attr}" ;;
-                  *)   span="{${inside}+$attr}" ;;
+                  *) span="{${inside}+$attr}" ;;
                 esac
-                out="$out$span$inner$base"
-                s=${s#*"$inner""$d"} ;;
-              *) out="$out$d$s"; s= ;;
-            esac ;;
+                out="$out$span$(rm_inline "$inner" "$span")$base"
+                s=${s#*"$inner""$d"}
+                ;;
+              *)
+                out="$out$d$s"
+                s=
+                ;;
+            esac
+            ;;
           '![')
             case "$s" in
               *\]*)
                 label=${s%%\]*}
                 out="$out$kak_opt_render_markdown_link_image$label$base"
                 s=${s#*"$label"]}
-                # drop the (url) part
+                # drop the (url) part; trailing text after it is kept
                 case "$s" in
-                  \(*\)) s=${s#\(}; s=${s#*\)} ;;
-                esac ;;
-            esac ;;
+                  \(*\)*)
+                    s=${s#\(}
+                    s=${s#*\)}
+                    ;;
+                esac
+                ;;
+            esac
+            ;;
           '[')
             case "$s" in
               *\]\(*)
                 label=${s%%\]*}
                 rest=${s#*"$label"]}
                 case "$rest" in
-                  \(*\))
-                    url=${rest#\(}; url=${url%%\)*}
+                  \(*\)*)
+                    url=${rest#\(}
+                    url=${url%%\)*}
                     case "$url" in
                       *http*) out="$out$kak_opt_render_markdown_link_web$label$base" ;;
-                      *)      out="$out$kak_opt_render_markdown_link_link$label$base" ;;
+                      *) out="$out$kak_opt_render_markdown_link_link$label$base" ;;
                     esac
-                    s=${rest#\("$url"\)} ;;
-                  *) out="$out[$label$rest"; s= ;;
-                esac ;;
-              *) out="$out[$s"; s= ;;
-            esac ;;
+                    s=${rest#\("$url"\)}
+                    ;;
+                  *)
+                    out="$out[$label$rest"
+                    s=
+                    ;;
+                esac
+                ;;
+              *)
+                out="$out[$s"
+                s=
+                ;;
+            esac
+            ;;
         esac
       done
       printf '%s' "$out"
     }
 
-render_markdown_table_align() {
-  # read rows from stdin, remember the first line's indent
-  n=0
-  indent=
-  while IFS= read -r line; do
-    n=$((n + 1))
-    eval "row$n=\$line"
-    if [ -z "$indent" ]; then
-      indent=$(printf '%s' "$line" | sed 's/[^[:space:]].*//')
-    fi
-  done
-  rows=$n
+    # Display width of a string: East Asian wide characters and emoji count
+    # two columns, zero-width marks count none, everything else one.  od gives
+    # raw bytes, so the UTF-8 decoding does not depend on the shell locale.
+    rm_width() {
+      printf '%s' "$1" | od -An -tu1 | awk '
+        function wide(c) {
+          if (c >= 4352 && c <= 4447) return 1
+          if (c >= 11904 && c <= 12350) return 1
+          if (c >= 12353 && c <= 13311) return 1
+          if (c >= 13312 && c <= 19903) return 1
+          if (c >= 19968 && c <= 40959) return 1
+          if (c >= 40960 && c <= 42191) return 1
+          if (c >= 44032 && c <= 55203) return 1
+          if (c >= 63744 && c <= 64255) return 1
+          if (c >= 65040 && c <= 65049) return 1
+          if (c >= 65072 && c <= 65135) return 1
+          if (c >= 65280 && c <= 65376) return 1
+          if (c >= 65504 && c <= 65510) return 1
+          if (c >= 127744 && c <= 128591) return 1
+          if (c >= 129280 && c <= 129535) return 1
+          if (c >= 131072 && c <= 196605) return 1
+          if (c >= 196608 && c <= 262141) return 1
+          return 0
+        }
+        function zero(c) {
+          if (c >= 768 && c <= 879) return 1
+          if (c >= 8203 && c <= 8207) return 1
+          if (c == 8205) return 1
+          if (c >= 65024 && c <= 65039) return 1
+          if (c >= 127995 && c <= 127999) return 1
+          return 0
+        }
+        { for (i = 1; i <= NF; i++) b[++n] = $i }
+        END {
+          w = 0
+          i = 1
+          while (i <= n) {
+            b1 = b[i]
+            if (b1 < 128) { c = b1; i += 1 }
+            else if (b1 < 224) { c = (b1 - 192) * 64 + (b[i + 1] - 128); i += 2 }
+            else if (b1 < 240) {
+              c = (b1 - 224) * 4096 + (b[i + 1] - 128) * 64 + (b[i + 2] - 128)
+              i += 3
+            } else {
+              c = (b1 - 240) * 262144 + (b[i + 1] - 128) * 4096 + (b[i + 2] - 128) * 64 + (b[i + 3] - 128)
+              i += 4
+            }
+            if (zero(c)) continue
+            w += wide(c) ? 2 : 1
+          }
+          print w
+        }
+      '
+    }
 
-  # pass 1: split into trimmed segments, detect separator rows, and record
-  # the per-column content width (separators do not count towards widths)
-  maxcols=0
-  i=0
-  while [ $i -lt "$rows" ]; do
-    i=$((i + 1))
-    eval "line=\$row$i"
-    rest=$line
-    j=0
-    while :; do
-      case "$rest" in
-        *\|*) seg=${rest%%\|*}; rest=${rest#*\|} ;;
-        *)    seg=$rest;        rest= ;;
-      esac
-      j=$((j + 1))
-      seg=$(printf '%s' "$seg" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-      eval "s${i}_${j}=\$seg"
-      [ -n "$rest" ] || break
-    done
+    # Visible display width of face-marked text: drop the {...} face specs
+    # (they are not drawn) before measuring.  The brace characters are built
+    # from octal so no literal brace appears in this block (Kakoune counts
+    # braces even inside quotes).
+    rm_visible_width() {
+      ob=$(printf '\173')
+      cb=$(printf '\175')
+      rm_width "$(printf '%s' "$1" | sed "s/$ob[^$cb]*$cb//g")"
+    }
 
-    # columns = segments after the leading pipe, up to the last non-empty one
-    last=$j
-    while [ "$last" -gt 1 ] && eval "[ -z \"\$s${i}_${last}\" ]"; do
-      last=$((last - 1))
-    done
-    cols=$((last - 1))
-    [ "$cols" -gt 0 ] || cols=0
-
-    # separator row: every segment is empty or dash/colon, with a dash
-    hasdash=0; sep=1
-    k=1
-    while [ $k -le "$j" ]; do
-      eval "seg=\$s${i}_${k}"
-      case "$seg" in
-        '') ;;
-        *[!-:]*) sep=0 ;;
-        *-*) hasdash=1 ;;
-      esac
-      k=$((k + 1))
-    done
-    [ "$hasdash" -eq 0 ] && sep=0
-    eval "sep$i=$sep"
-    eval "segn$i=$j"
-
-    if [ "$sep" -eq 0 ]; then
-      k=2
-      while [ $k -le "$j" ]; do
-        eval "seg=\$s${i}_${k}"
-        len=${#seg}
-        col=$((k - 1))
-        w=$(eval "printf '%s' \"\${w$col:-}\"")
-        [ -z "$w" ] && w=0
-        [ "$len" -gt "$w" ] && eval "w$col=$len"
-        k=$((k + 1))
-      done
-    fi
-    [ "$cols" -gt "$maxcols" ] && maxcols=$cols
-  done
-
-  # pass 2: emit the aligned rows
-  i=0
-  while [ $i -lt "$rows" ]; do
-    i=$((i + 1))
-    eval "sep=\$sep$i"
-    if [ "$sep" -eq 1 ]; then
-      line="$indent|"
-      k=1
-      while [ $k -le "$maxcols" ]; do
-        w=$(eval "printf '%s' \"\${w$k:-}\"")
-        [ -z "$w" ] && w=0
-        d=$((w + 2)); [ "$d" -lt 3 ] && d=3
-        dashes=$(printf '%0*d' "$d" 0 | tr '0' '-')
-        line="$line$dashes|"
-        k=$((k + 1))
-      done
-    else
-      line="$indent|"
-      k=1
-      while [ $k -le "$maxcols" ]; do
-        pos=$((k + 1))
-        eval "segn=\$segn$i"
-        if [ "$pos" -le "$segn" ]; then
-          eval "cell=\$s${i}_${pos}"
-        else
-          cell=
+    render_markdown_table_align() {
+      # read rows from stdin, remember the first line's indent
+      n=0
+      indent=
+      while IFS= read -r line; do
+        n=$((n + 1))
+        eval "row$n=\$line"
+        if [ -z "$indent" ]; then
+          indent=$(printf '%s' "$line" | sed 's/[^[:space:]].*//')
         fi
-        w=$(eval "printf '%s' \"\${w$k:-}\"")
-        [ -z "$w" ] && w=0
-        nsp=$((w - ${#cell}))
-        pad=$(printf '%*s' "$nsp" '')
-        line="$line $cell$pad |"
-        k=$((k + 1))
       done
-    fi
-    if [ "$i" -lt "$rows" ]; then
-      printf '%s\n' "$line"
-    else
-      printf '%s' "$line"
-    fi
-  done
-}
+      rows=$n
+
+      # pass 1: split into trimmed segments, detect separator rows, and record
+      # the per-column content width (separators do not count towards widths)
+      maxcols=0
+      i=0
+      while [ $i -lt "$rows" ]; do
+        i=$((i + 1))
+        eval "line=\$row$i"
+        rest=$line
+        j=0
+        while :; do
+          case "$rest" in
+            *\|*)
+              seg=${rest%%\|*}
+              rest=${rest#*\|}
+              ;;
+            *)
+              seg=$rest
+              rest=
+              ;;
+          esac
+          j=$((j + 1))
+          seg=$(printf '%s' "$seg" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+          eval "s${i}_${j}=\$seg"
+          [ -n "$rest" ] || break
+        done
+
+        # columns = segments after the leading pipe, up to the last non-empty one
+        last=$j
+        while [ "$last" -gt 1 ] && eval "[ -z \"\$s${i}_${last}\" ]"; do
+          last=$((last - 1))
+        done
+        cols=$((last - 1))
+        [ "$cols" -gt 0 ] || cols=0
+
+        # separator row: every segment is empty or dash/colon, with a dash
+        hasdash=0
+        sep=1
+        k=1
+        while [ $k -le "$j" ]; do
+          eval "seg=\$s${i}_${k}"
+          case "$seg" in
+            '') ;;
+            *[!-:]*) sep=0 ;;
+            *-*) hasdash=1 ;;
+          esac
+          k=$((k + 1))
+        done
+        [ "$hasdash" -eq 0 ] && sep=0
+        eval "sep$i=$sep"
+        eval "segn$i=$j"
+
+        if [ "$sep" -eq 0 ]; then
+          k=2
+          while [ $k -le "$j" ]; do
+            eval "seg=\$s${i}_${k}"
+            len=$(rm_width "$seg")
+            col=$((k - 1))
+            w=$(eval "printf '%s' \"\${w$col:-}\"")
+            [ -z "$w" ] && w=0
+            [ "$len" -gt "$w" ] && eval "w$col=$len"
+            k=$((k + 1))
+          done
+        fi
+        [ "$cols" -gt "$maxcols" ] && maxcols=$cols
+      done
+
+      # pass 2: emit the aligned rows
+      i=0
+      while [ $i -lt "$rows" ]; do
+        i=$((i + 1))
+        eval "sep=\$sep$i"
+        if [ "$sep" -eq 1 ]; then
+          line="$indent|"
+          k=1
+          while [ $k -le "$maxcols" ]; do
+            w=$(eval "printf '%s' \"\${w$k:-}\"")
+            [ -z "$w" ] && w=0
+            d=$((w + 2))
+            [ "$d" -lt 3 ] && d=3
+            dashes=$(printf '%0*d' "$d" 0 | tr '0' '-')
+            line="$line$dashes|"
+            k=$((k + 1))
+          done
+        else
+          line="$indent|"
+          k=1
+          while [ $k -le "$maxcols" ]; do
+            pos=$((k + 1))
+            eval "segn=\$segn$i"
+            if [ "$pos" -le "$segn" ]; then
+              eval "cell=\$s${i}_${pos}"
+            else
+              cell=
+            fi
+            w=$(eval "printf '%s' \"\${w$k:-}\"")
+            [ -z "$w" ] && w=0
+            cw=$(rm_width "$cell")
+            nsp=$((w - cw))
+            pad=$(printf '%*s' "$nsp" '')
+            line="$line $cell$pad |"
+            k=$((k + 1))
+          done
+        fi
+        if [ "$i" -lt "$rows" ]; then
+          printf '%s\n' "$line"
+        else
+          printf '%s' "$line"
+        fi
+      done
+    }
     render_markdown_classify() {
       kind=$1
       case "$kind" in
+        front-matter)
+          # A leading YAML front matter block is hidden and consumed, so its
+          # opening/closing "---" never renders as a rule or setext underline.
+          # The matcher only produces line-1 matches; guard anyway.
+          [ "$(rm_line)" -eq 1 ] || exit 0
+          nl=$(printf '\n_') # nl is a newline, to split the lines apart
+          nl=${nl%_}
+          s=$kak_selection
+          case "$s" in
+            *"$nl") s=${s%$nl} ;; # drop a single trailing newline
+          esac
+          line=1
+          consumed=
+          rest=$s
+          while :; do
+            case "$rest" in
+              *"$nl"*)
+                cur=${rest%%$nl*}
+                rest=${rest#*$nl}
+                ;;
+              *)
+                cur=$rest
+                rest=
+                ;;
+            esac
+            bytes=$(($(printf '%s' "$cur" | wc -c)))
+            rm_emit_desc "$line.1,$line.$bytes" ''
+            consumed="$consumed $line"
+            line=$((line + 1))
+            [ -n "$rest" ] || break
+          done
+          printf "set-option -add global _render_markdown_consumed_lines%s\n" "$consumed"
+          ;;
         heading)
           level=$(printf '%s' "$kak_selection" | grep -o '^#*' | wc -c)
           level=$((level - 1))
@@ -367,29 +505,95 @@ render_markdown_table_align() {
           content=$(printf '%s' "$kak_selection" | sed -e 's/^#*//' -e "s/'/''/g")
           rm_emit heading "$face" "$(rm_inline "$content" "$(rm_head "$face")")"
           # the whole heading line is consumed; inline kinds must not match inside it
-          printf "set-option -add global _render_markdown_consumed_lines %s\n" "$(rm_line)" ;;
+          printf "set-option -add global _render_markdown_consumed_lines %s\n" "$(rm_line)"
+          ;;
         setext)
-          # face the text line, hide the underline, consume both
+          # A setext underline turns the whole preceding paragraph into a
+          # heading.  The matcher finds the underline and expands the
+          # selection with the paragraph text object (<a-i>p), so the
+          # selection is every text line followed by the underline.  Face
+          # each text line, hide the underline, consume all of them.
           if rm_consumed; then exit 0; fi
-          case "$kak_selection" in
-            \>*|[-*+]\ *|[0-9]*.\ *|[0-9]*\)\ *)
-              # a list item or quote is not a paragraph, so "---" stays a rule
-              exit 0 ;;
-          esac
-          nl=$(printf '\n_')  # nl is a newline, to split the two lines apart
+          nl=$(printf '\n_') # nl is a newline, to split the lines apart
           nl=${nl%_}
-          text=${kak_selection%%"$nl"*}
-          underline=${kak_selection#*"$nl"}
-          underline=${underline%$nl}
+          s=$kak_selection
+          case "$s" in
+            *"$nl") s=${s%$nl} ;; # drop a single trailing newline
+          esac
+          case "$s" in
+            *"$nl"*) ;; # need at least one text line plus the underline
+            *) exit 0 ;;
+          esac
+          underline=${s##*$nl}
+          text=${s%$nl*}
+          # Split the text into lines, then take the longest suffix of plain
+          # paragraph lines immediately before the underline.  A block
+          # construct (heading, quote, list marker, fence, thematic break)
+          # interrupts a paragraph, so it ends the heading there; leading
+          # indentation on a plain line is allowed.
+          bt=$(printf '\140') # backtick char, so no command substitution
+          rest=$text
+          rows=0
+          while :; do
+            case "$rest" in
+              *"$nl"*)
+                line=${rest%%$nl*}
+                rest=${rest#*$nl}
+                ;;
+              *)
+                line=$rest
+                rest=
+                ;;
+            esac
+            rows=$((rows + 1))
+            eval "row$rows=\$line"
+            [ -n "$rest" ] || break
+          done
+          first_row=$((rows + 1))
+          i=$rows
+          while [ "$i" -ge 1 ]; do
+            eval "line=\$row$i"
+            stripped=$(printf '%s' "$line" | sed 's/^[[:space:]]*//')
+            first=$(printf '%.1s' "$stripped")
+            ok=1
+            case "$stripped" in
+              '') ok=0 ;;         # blank line ends the paragraph
+              *[!_[:space:]]*) ;; # has real content
+              *) ok=0 ;;          # only underscores/spaces: a thematic break
+            esac
+            case "$first" in
+              '#' | '>' | '-' | '*' | '+' | '=' | '~' | '_' | "$bt" | [0-9]) ok=0 ;;
+            esac
+            [ "$ok" -eq 1 ] || break
+            first_row=$i
+            i=$((i - 1))
+          done
+          # no plain paragraph line directly above the underline: not a setext
+          [ "$first_row" -le "$rows" ] || exit 0
           case "$underline" in
             =*) face=$kak_opt_render_markdown_heading_1 ;;
             *) face=$kak_opt_render_markdown_heading_2 ;;
           esac
-          face=$(rm_head "$face")  # no marker to replace, so no glyph either
-          line=${kak_selection_desc%%.*}
-          rm_emit_desc "$line.1,$line.${#text}" "$face" "$(rm_inline "$text" "$face")"
-          rm_emit_desc "$((line + 1)).1,$((line + 1)).${#underline}" ''
-          printf "set-option -add global _render_markdown_consumed_lines %s\n" "$line" "$((line + 1))" ;;
+          face=$(rm_head "$face") # no marker to replace, so no glyph either
+          # range columns count bytes, not characters: wc -c, whose padding
+          # $(( )) normalises.  The first text row is first_row, which sits at
+          # selection line + first_row - 1.
+          line=$(($(rm_line) + first_row - 1))
+          consumed=
+          i=$first_row
+          while [ "$i" -le "$rows" ]; do
+            eval "text=\$row$i"
+            text_bytes=$(($(printf '%s' "$text" | wc -c)))
+            rm_emit_desc "$line.1,$line.$text_bytes" "$face" "$(rm_inline "$text" "$face")"
+            consumed="$consumed $line"
+            line=$((line + 1))
+            i=$((i + 1))
+          done
+          underline_bytes=$(($(printf '%s' "$underline" | wc -c)))
+          rm_emit_desc "$line.1,$line.$underline_bytes" ''
+          consumed="$consumed $line"
+          printf "set-option -add global _render_markdown_consumed_lines%s\n" "$consumed"
+          ;;
         list)
           if rm_consumed; then exit 0; fi
           content=
@@ -405,16 +609,18 @@ render_markdown_table_align() {
               ;;
             *) face=$kak_opt_render_markdown_bullet ;;
           esac
-          rm_emit list "$face" "$content" ;;
+          rm_emit list "$face" "$content"
+          ;;
         hrule)
           if rm_consumed; then exit 0; fi
           rm_emit hrule "$kak_opt_render_markdown_horizontal_rule" ''
           # the rule line is consumed: emphasis markers inside it must not match
-          printf "set-option -add global _render_markdown_consumed_lines %s\n" "$(rm_line)" ;;
+          printf "set-option -add global _render_markdown_consumed_lines %s\n" "$(rm_line)"
+          ;;
         blockquote)
           # replace the leading '>' run with one glyph per '>' (whitespace is
           # kept): '> ' -> '▋ ', '>text' -> '▋text', '>> t' -> '▋▋ t'
-          cb=$(printf '\175')  # close-brace char, so no brace literal appears here
+          cb=$(printf '\175') # close-brace char, so no brace literal appears here
           head=$(printf '%s' "$kak_opt_render_markdown_blockquote" | sed "s/$cb.*/$cb/")
           glyph=$(printf '%s' "$kak_opt_render_markdown_blockquote" | sed "s/.*$cb//;s/[[:space:]]*$//")
           s=$kak_selection
@@ -427,7 +633,8 @@ render_markdown_table_align() {
               *) drawn="$drawn$c" ;;
             esac
           done
-          rm_emit blockquote "$head" "$drawn" ;;
+          rm_emit blockquote "$head" "$drawn"
+          ;;
         table)
           # rows are consumed so inline kinds never render inside cells.
           # Separator rows (only dashes/colons between pipes) are redrawn as a
@@ -449,43 +656,70 @@ render_markdown_table_align() {
               case "$c" in
                 '|')
                   n=$((n + 1))
-                  if [ "$n" -eq 1 ]; then c='├'
-                  elif [ "$n" -eq "$pipes" ]; then c='┤'
-                  else c='┼'; fi ;;
-                '-'|':') c='─' ;;
+                  if [ "$n" -eq 1 ]; then
+                    c='├'
+                  elif [ "$n" -eq "$pipes" ]; then
+                    c='┤'
+                  else c='┼'; fi
+                  ;;
+                '-' | ':') c='─' ;;
               esac
               drawn="$drawn$c"
             done
             rm_emit table "$kak_opt_render_markdown_table_separator" "$drawn"
           else
-            s=$kak_selection
-            off=$col
-            while [ -n "$s" ]; do
-              case "$s" in
-                \|*) rm_emit_desc "$line.$off+1" "$kak_opt_render_markdown_table_pipe" '│' ;;
-              esac
-              s=${s#?}
-              off=$((off + 1))
+            # byte offsets, not characters: grep -ob, since a cell may hold
+            # multi-byte characters and Kakoune range columns count bytes
+            offs=$(printf '%s' "$kak_selection" | grep -ob '|' | cut -d: -f1)
+            for off in $offs; do
+              rm_emit_desc "$line.$((col + off))+1" "$kak_opt_render_markdown_table_pipe" '│'
+            done
+            # Inline markdown inside cells: each cell is replaced by the same
+            # text rendered as face markup and padded with spaces so the cell
+            # keeps its display width and the pipes never move.  A cell whose
+            # rendering would grow (rare) is left raw.  Cells are bounded by
+            # consecutive pipe byte offsets.
+            prev=
+            for off in $offs; do
+              if [ -n "$prev" ] && [ "$off" -gt "$((prev + 1))" ]; then
+                cell=$(printf '%s' "$kak_selection" | cut -b "$((prev + 2))-$off")
+                rendered=$(rm_inline "$cell" '{}')
+                if [ "$rendered" != "$cell" ]; then
+                  ow=$(rm_width "$cell")
+                  rw=$(rm_visible_width "$rendered")
+                  pad=$((ow - rw))
+                  if [ "$pad" -ge 0 ]; then
+                    [ "$pad" -gt 0 ] && rendered="$rendered$(printf '%*s' "$pad" '')"
+                    rm_emit_desc "$line.$((col + prev + 1)),$line.$((col + off - 1))" '' "$rendered"
+                  fi
+                fi
+              fi
+              prev=$off
             done
           fi
-          printf "set-option -add global _render_markdown_consumed_lines %s\n" "$line" ;;
+          printf "set-option -add global _render_markdown_consumed_lines %s\n" "$line"
+          ;;
         link)
           if rm_consumed; then exit 0; fi
           content=$(printf '%s' "$kak_selection" | sed -e 's/^!//' -e 's/^\[//' -e 's/\]\(.*\)$//' -e 's/\]\[.*$//' -e "s/'/''/g")
           case "$kak_selection" in
-            !*)    face=$kak_opt_render_markdown_link_image ;;
+            !*) face=$kak_opt_render_markdown_link_image ;;
             *http*) face=$kak_opt_render_markdown_link_web ;;
-            *)     face=$kak_opt_render_markdown_link_link ;;
+            *) face=$kak_opt_render_markdown_link_link ;;
           esac
-          rm_emit link "$face" "$content" ;;
+          rm_emit link "$face" "$content"
+          ;;
         link-mail)
           if rm_consumed; then exit 0; fi
           content=$(printf '%s' "$kak_selection" | sed -e 's/^<//' -e 's/>$//' -e "s/'/''/g")
-          rm_emit link "$kak_opt_render_markdown_link_mail" "$content" ;;
+          rm_emit link "$kak_opt_render_markdown_link_mail" "$content"
+          ;;
         inline-code)
-          rm_emit code "$kak_opt_render_markdown_inline_code" "$(rm_strip "$kak_selection" '`')" ;;
+          rm_emit code "$kak_opt_render_markdown_inline_code" "$(rm_strip "$kak_selection" '`')"
+          ;;
         strike)
-          rm_emit strike "$kak_opt_render_markdown_strikethrough" "$(rm_strip "$kak_selection" '~')" ;;
+          rm_emit strike "$kak_opt_render_markdown_strikethrough" "$(rm_strip "$kak_selection" '~')"
+          ;;
         emphasis)
           if rm_consumed; then exit 0; fi
           # dispatch by first marker char: ~ strike, ` inline code, _/* em
@@ -493,11 +727,11 @@ render_markdown_table_align() {
           case "$start" in
             '~') render_markdown_classify strike ;;
             '`') render_markdown_classify inline-code ;;
-            '*'|'_')
+            '*' | '_')
               case "$kak_selection" in
                 # longest run first: "__*" also matches "___"
-                ___*|\*\*\**) render_markdown_classify em-triple ;;
-                __*|\*\**) render_markdown_classify em-double ;;
+                ___* | \*\*\**) render_markdown_classify em-triple ;;
+                __* | \*\**) render_markdown_classify em-double ;;
                 *) render_markdown_classify em-single ;;
               esac
               ;;
@@ -508,23 +742,38 @@ render_markdown_table_align() {
           face=$(rm_merge_triple "$kak_opt_render_markdown_bold" "$kak_opt_render_markdown_italics")
           case "$kak_selection" in
             ___*) content=$(rm_strip "$kak_selection" '_') ;;
-            *)    content=$(rm_strip "$kak_selection" '*') ;;
+            *) content=$(rm_strip "$kak_selection" '*') ;;
           esac
-          rm_emit em "$face" "$content" ;;
+          rm_emit em "$face" "$content"
+          ;;
         em-double)
           # **x** / __x__ -> bold face (markdown semantics)
           case "$kak_selection" in
-            __*) face=$kak_opt_render_markdown_bold; content=$(rm_strip "$kak_selection" '_') ;;
-            *)   face=$kak_opt_render_markdown_bold; content=$(rm_strip "$kak_selection" '*') ;;
+            __*)
+              face=$kak_opt_render_markdown_bold
+              content=$(rm_strip "$kak_selection" '_')
+              ;;
+            *)
+              face=$kak_opt_render_markdown_bold
+              content=$(rm_strip "$kak_selection" '*')
+              ;;
           esac
-          rm_emit em "$face" "$content" ;;
+          rm_emit em "$face" "$content"
+          ;;
         em-single)
           # *x* / _x_ -> italics face (markdown semantics)
           case "$kak_selection" in
-            _*) face=$kak_opt_render_markdown_italics; content=$(rm_strip "$kak_selection" '_') ;;
-            *)  face=$kak_opt_render_markdown_italics; content=$(rm_strip "$kak_selection" '*') ;;
+            _*)
+              face=$kak_opt_render_markdown_italics
+              content=$(rm_strip "$kak_selection" '_')
+              ;;
+            *)
+              face=$kak_opt_render_markdown_italics
+              content=$(rm_strip "$kak_selection" '*')
+              ;;
           esac
-          rm_emit em "$face" "$content" ;;
+          rm_emit em "$face" "$content"
+          ;;
       esac
     }
   }
@@ -584,13 +833,31 @@ render_markdown_table_align() {
     }
   }
 
-  # Setext headings: a paragraph line followed by "===" (level 1) or "---"
-  # (level 2).
+  # YAML front matter: a leading "---" line, the YAML lines, and a closing
+  # "---" line before the first blank line.  Non-CommonMark heuristic (see
+  # README), so it is matched and consumed before anything else can render its
+  # delimiters.  The tempered lookahead keeps the group from swallowing the
+  # closing delimiter (or running past a blank line into the document body).
+  define-command -hidden _render-markdown-match-frontmatter %{
+    evaluate-commands -draft %{
+      execute-keys "gtGbx"
+      try %{
+        execute-keys "s^---\h*\n(?:(?!---\n)(?!\n)[^\n]*\n)*---\h*\n<ret>"
+        _render-markdown-handle front-matter
+      }
+    }
+  }
+
+  # Setext headings: a paragraph followed by "===" (level 1) or "---"
+  # (level 2). The underline is found first, then the paragraph text object
+  # (<a-i>p) expands the selection to the whole preceding paragraph, so a
+  # multi-line paragraph is covered as well.
   define-command -hidden _render-markdown-match-setext %{
     evaluate-commands -draft %{
       execute-keys "gtGbx"
       try %{
-        execute-keys "s^\h*[^\n]+\n\h*(=+|-+)\h*\n<ret>"
+        execute-keys "s^\h*(=+|-+)\h*$<ret>"
+        execute-keys "<a-i>p"
         _render-markdown-handle setext
       }
     }
@@ -603,8 +870,13 @@ render_markdown_table_align() {
     evaluate-commands -draft %{
       execute-keys "gtGbx"
       try %{
-        # the info string excludes backticks, as CommonMark requires
-        execute-keys "%%s```[^`\n]*\n((?:(?!```).)*)\n[^\n]*```<ret>"
+        # One alternative per fence length, longest first: the engine has no
+        # backreferences, so "closing fence at least as long as the opening
+        # one" is expressed by pairing equal-length runs.  The content guard
+        # excludes only the current length, so a longer fence may contain
+        # shorter fences (e.g. a four-backtick block documenting a three).
+        # The info string excludes backticks, as CommonMark requires.
+        execute-keys "%%s``````[^`\n]*\n((?:(?!``````).)*)\n[^\n]*``````(?![`])|`````[^`\n]*\n((?:(?!`````).)*)\n[^\n]*`````(?![`])|````[^`\n]*\n((?:(?!````).)*)\n[^\n]*````(?![`])|```[^`\n]*\n((?:(?!```).)*)\n[^\n]*```(?![`])<ret>"
         # Spans of non-markdown fences: inline kinds starting inside are skipped.
         # The opening line mentions markdown exactly when `smarkdown` matches in
         # it, so the try/catch below is the condition.
@@ -617,13 +889,15 @@ render_markdown_table_align() {
             evaluate-commands "set-option -add global _render_markdown_fence_spans '%reg{f}'"
           }
         }
-        # opening and closing fence markers, emitted in one shell pass below
+        # opening and closing fence markers, emitted in one shell pass below.
+        # The marker run is matched with `+ so four-plus-backtick fences are
+        # covered by the same range as three-backtick ones.
         evaluate-commands -itersel -draft %{
-          execute-keys "<a-:><a-semicolon><semicolon>xs```<ret>"
+          execute-keys "<a-:><a-semicolon><semicolon>xs`+<ret>"
           set-option -add global _render_markdown_fence_starts "%val{selection_desc}"
         }
         evaluate-commands -itersel -draft %{
-          execute-keys "<a-:><semicolon>xs```<ret>"
+          execute-keys "<a-:><semicolon>xs`+<ret>"
           set-option -add global _render_markdown_fence_ends "%val{selection_desc}"
         }
         evaluate-commands %sh{
@@ -786,8 +1060,11 @@ render_markdown_table_align() {
     set-option global _render_markdown_fence_ends
     evaluate-commands -draft %{
       # matcher table: one command per feature, each re-selecting the viewable
-      # buffer (gtGbx) before its search. Codeblocks come first because their
-      # whole-buffer scan records the fence spans every other matcher consults.
+      # buffer (gtGbx) before its search.  Front matter runs first so its
+      # delimiters never render as rules or headings; codeblocks run next
+      # because their whole-buffer scan records the fence spans every other
+      # matcher consults.
+      _render-markdown-match-frontmatter
       _render-markdown-match-codeblocks
       _render-markdown-match-headings
       # setext runs before hrules: its underline is consumed, so "Title" plus

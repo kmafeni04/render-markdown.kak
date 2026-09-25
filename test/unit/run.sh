@@ -190,8 +190,7 @@ kak_selection='Setext one
 check 'setext heading level 1' \
   "${pre}'30.1,30.10|{blue+f}Setext one'
 ${pre}'31.1,31.10|'
-set-option -add global _render_markdown_consumed_lines 30
-set-option -add global _render_markdown_consumed_lines 31" \
+set-option -add global _render_markdown_consumed_lines 30 31" \
   "$(run setext)"
 
 kak_selection='Setext two
@@ -199,9 +198,48 @@ kak_selection='Setext two
 check 'setext heading level 2' \
   "${pre}'32.1,32.10|{green+f}Setext two'
 ${pre}'33.1,33.10|'
-set-option -add global _render_markdown_consumed_lines 32
-set-option -add global _render_markdown_consumed_lines 33" \
+set-option -add global _render_markdown_consumed_lines 32 33" \
   "$(run setext)"
+
+kak_selection='First line
+Second line
+===' kak_selection_desc='34.1,36.4'
+check 'multi-line setext heading faces every text line' \
+  "${pre}'34.1,34.10|{blue+f}First line'
+${pre}'35.1,35.11|{blue+f}Second line'
+${pre}'36.1,36.3|'
+set-option -add global _render_markdown_consumed_lines 34 35 36" \
+  "$(run setext)"
+
+kak_selection='  - indented item
+---' kak_selection_desc='37.1,38.3'
+check 'setext ignores an indented list item' '' "$(run setext)"
+
+kak_selection='# heading interrupts
+---' kak_selection_desc='39.1,40.3'
+check 'setext ignores a paragraph run ending in a heading' '' "$(run setext)"
+
+kak_selection='body text
+# heading
+---' kak_selection_desc='41.1,43.3'
+check 'setext stops at a heading inside the paragraph' '' "$(run setext)"
+
+kak_selection='---
+title: x
+---
+' kak_selection_desc='1.1,3.4'
+check 'front matter hidden and consumed' \
+  "${pre}'1.1,1.3|'
+${pre}'2.1,2.8|'
+${pre}'3.1,3.3|'
+set-option -add global _render_markdown_consumed_lines 1 2 3" \
+  "$(run front-matter)"
+
+kak_selection='---
+title: x
+---
+' kak_selection_desc='5.1,7.4'
+check 'front matter away from line 1 is ignored' '' "$(run front-matter)"
 
 kak_selection='- item
 ---' kak_selection_desc='34.1,35.3'
@@ -269,6 +307,10 @@ check 'heading plain link' 'q{L}f{H}' "$(rm_inline 'q[f](rel.md)' '{H}')"
 check 'heading image' '{I}img{H}' "$(rm_inline '![img](a.png)' '{H}')"
 check 'heading mixed spans' 'a{H+b}b{H} c{H+i}d{H}' "$(rm_inline 'a**b** c*d*' '{H}')"
 check 'heading span inherits attr token' '{blue+fb}b{blue+f}' "$(rm_inline '**b**' '{blue+f}')"
+check 'heading triple marker merges bold and italics' '{H+bi}x{H}' "$(rm_inline '***x***' '{H}')"
+check 'heading underscore triple marker' '{H+bi}x{H}' "$(rm_inline '___x___' '{H}')"
+check 'heading nested emphasis' '{H+b}bold {H+bi}it{H+b} bold{H}' \
+  "$(rm_inline '**bold *it* bold**' '{H}')"
 
 export kak_opt_render_markdown_table_separator='{S}'
 export kak_opt_render_markdown_table_pipe='{P}'
@@ -284,6 +326,22 @@ check 'table pipe bars' \
   "${pre}'1.1+1|{P}│'
 ${pre}'1.5+1|{P}│'
 ${pre}'1.9+1|{P}│'
+set-option -add global _render_markdown_consumed_lines 1" \
+  "$(run table)"
+
+kak_selection='| é | b |' kak_selection_desc='1.1,1.10'
+check 'table pipe bars after a multi-byte cell' \
+  "${pre}'1.1+1|{P}│'
+${pre}'1.6+1|{P}│'
+${pre}'1.10+1|{P}│'
+set-option -add global _render_markdown_consumed_lines 1" \
+  "$(run table)"
+
+kak_selection='| **b** |' kak_selection_desc='1.1,1.9'
+check 'table cell inline emphasis keeps the cell width' \
+  "${pre}'1.1+1|{P}│'
+${pre}'1.9+1|{P}│'
+${pre}'1.2,1.8| {+b}b{}     '
 set-option -add global _render_markdown_consumed_lines 1" \
   "$(run table)"
 
@@ -306,6 +364,16 @@ check 'align separator min three dashes' \
 |----|
 | xx |" \
   "$(printf '%s\n' '| c' '|-' '| xx' | render_markdown_table_align)"
+
+check 'rm_width counts wide and zero-width characters' \
+  '3 6 2 4 1' \
+  "$(rm_width abc) $(rm_width 日本語) $(rm_width 😀) $(rm_width a日b) $(rm_width "e$(printf '\314\201')")"
+
+check 'align columns by display width for wide glyphs' \
+  "| 名前 | age |
+|------|-----|
+| a    | b   |" \
+  "$(printf '%s\n' '| 名前 | age |' '|------|-----|' '| a | b |' | render_markdown_table_align)"
 
 if [ "$fails" -gt 0 ]; then
   printf '%s\n' "$(cm_red "FAIL $fails of $((passes + fails)) checks")"

@@ -40,8 +40,8 @@ The full automated suite is `dash test/run.sh` (see Testing below).
 ## Rendering Support
 
 Currently the plugin supports rendering
-- Headings (ATX and setext)
-- Codeblocks
+- Headings (ATX, setext, including multi-line setext paragraphs)
+- Codeblocks (backtick fences of three to six backticks)
 - Checkboxes
 - List markers (bullets, and ordered numbers kept in place)
 - Thematic breaks (`---`, `***`, `___`, and spaced forms such as `- - -`)
@@ -52,6 +52,7 @@ Currently the plugin supports rendering
 - Bold text
 - Inline code
 - Tables (box-drawing grid: │ bars, ├ ┼ ┤ ─ separator line)
+- A leading YAML front matter block (hidden; a non-spec heuristic)
 
 Every matcher but the code fence scan looks only at the lines on screen (see
 Quick test), which keeps the update cheap on large files.
@@ -70,8 +71,9 @@ You can make changes to them according to your taste
 
 Tables are rendered as a connecting grid: each `|` becomes a `│` bar and the
 separator row becomes a `├─┼─┤` line. All replacement glyphs are single-width,
-so column alignment is never disturbed. Header/content cell text is left
-untouched (no inline markdown inside cells).
+so column alignment is never disturbed. Inline emphasis, strikethrough, code
+and links inside cells are rendered too: the cell keeps its display width by
+padding the rendered text, so the pipes never move.
 
 ## Testing
 
@@ -98,15 +100,19 @@ When a golden changes, review the diff and re-bless only if the change is
 intended.
 
 ## Known Issues
-- Inline formatting inside headings (bold, italic, code, links) renders at one
-  level only — nested emphasis spans inside headings are not parsed
-- Inline markdown inside table cells is not rendered (cells show the raw text)
-- YAML front matter is not recognised: following CommonMark, its opening
-  `---` is a thematic break and its closing `---` a setext underline
-- Setext headings are recognised for single-line paragraphs only: a list
-  item or blockquote line followed by `---` stays a list or quote plus a rule
-- Fences of four or more backticks are not supported: the inner fence is
-  treated as a fence of its own
+- The range under the cursor is left in source form so you can see and edit it
+  (Kakoune does not replace a range containing the cursor; expected, not a bug)
+- YAML front matter is recognised by a heuristic (a leading `---` line with a
+  closing `---` before the first blank line), not by the CommonMark spec;
+  without the closing delimiter the block is left as ordinary Markdown
+- Setext headings are recognised for the paragraph immediately above the
+  underline; a list item or blockquote line directly above `---` stays a list
+  or quote plus a rule
+- Backtick fences longer than six backticks are not supported: the opening and
+  closing runs must be the same length, and only lengths three through six are
+  matched
+- Table cell inline rendering pads with trailing spaces, so cell text that
+  contains emphasis is left-aligned rather than preserving interior spacing
 
 ## Reference
 - https://github.com/MeanderingProgrammer/render-markdown.nvim
