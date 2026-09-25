@@ -35,8 +35,6 @@ Only the lines on screen are rendered, so in a long file the rest fills in
 as you scroll; code fences are the exception (their markers are found
 across the whole buffer, since a block can outlive the screen).
 
-The full automated suite is `dash test/run.sh` (see Testing below).
-
 ## Rendering Support
 
 Currently the plugin supports rendering
@@ -51,16 +49,29 @@ Currently the plugin supports rendering
 - Italics
 - Bold text
 - Inline code
-- Tables (box-drawing grid: │ bars, ├ ┼ ┤ ─ separator line)
+- Tables (box-drawing grid; see Table commands)
 - A leading YAML front matter block (hidden; a non-spec heuristic)
-
-Every matcher but the code fence scan looks only at the lines on screen (see
-Quick test), which keeps the update cheap on large files.
 
 ## Customisation
 
-All rendered faces are set with `render_markdown_*` options
-You can make changes to them according to your taste
+Every face and marker glyph is a `render_markdown_*` option (defaults at the
+top of `render-markdown.kak`); set one to change that rendering:
+
+| Option | Controls |
+| --- | --- |
+| `render_markdown_heading_1` … `render_markdown_heading_6` | ATX/setext heading markers and faces |
+| `render_markdown_codeblock_start`, `render_markdown_codeblock_end` | Opening and closing fence markers |
+| `render_markdown_checkbox_checked`, `render_markdown_checkbox_unchecked` | Task-list checkboxes |
+| `render_markdown_bullet` | List bullet marker (ordered numbers reuse its face) |
+| `render_markdown_horizontal_rule` | Thematic break line |
+| `render_markdown_blockquote` | Blockquote marker |
+| `render_markdown_link_image`, `render_markdown_link_web`, `render_markdown_link_link`, `render_markdown_link_mail` | Image, web, relative/reference and mail link prefixes |
+| `render_markdown_strikethrough`, `render_markdown_italics`, `render_markdown_bold` | Inline text faces |
+| `render_markdown_inline_code` | Inline code face |
+| `render_markdown_table_separator`, `render_markdown_table_pipe` | Table grid line and cell bars |
+
+Rendering is toggled with `render-markdown-enable`, `render-markdown-disable`
+and `render-markdown-toggle`.
 
 ## Table commands
 
@@ -80,7 +91,7 @@ padding the rendered text, so the pipes never move.
 Local, POSIX-only test suite (verified under `dash`):
 
 ```sh
-dash test/run.sh [unit|integration|smoke|bless|lint|all]
+dash test/run.sh [unit|integration|smoke|format|bless|lint|all]
 ```
 
 - `unit` — pure-shell tests for the classifier library (no Kakoune needed)
@@ -89,6 +100,8 @@ dash test/run.sh [unit|integration|smoke|bless|lint|all]
   against committed goldens. A fixture may carry a `<fixture>.cursor` file
   naming the line to render from, which covers scrolled viewports
 - `smoke` — checks the replace-ranges highlighter really renders glyphs
+- `format` — runs `render-markdown-table-format` and checks the line after
+  the table is left intact
 - `bless` — regenerates goldens from current output (use when behaviour
   intentionally changes)
 - `lint` — shellcheck on all shell scripts, plus a plugin sanity check

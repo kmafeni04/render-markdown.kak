@@ -43,12 +43,14 @@ and a [web link](https://kakoune.org).
 
 ## Tables
 
-Tables render their pipes and separator rows; cell content stays as typed.
+Tables redraw their pipes and separator row as a box grid, and inline markup
+inside cells is rendered in place.
 
-| Column A | Column B |
-|----------|----------|
-| a        | bb       |
-| c        |          |
+| Column A | Column B           |
+|----------|--------------------|
+| a        | bb                 |
+| **bold** | [link](example.md) |
+| c        |                    |
 
 ## Code blocks
 

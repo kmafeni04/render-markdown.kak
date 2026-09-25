@@ -45,10 +45,9 @@ provide-module render-markdown %{
   # and check golden files; unset (default) means no extra runtime work.
   declare-option -hidden str _render_markdown_debug_file ''
 
-  # begin-sh-lib
   # Embedded POSIX shell library (dash-verified), eval'd from the %sh blocks
-  # below. NOTE: braces must stay balanced because Kakoune tracks them in
-  # %{...} strings.
+  # below. Braces must stay balanced because Kakoune counts them even inside
+  # quotes, so the library builds literal braces from octal where needed.
   declare-option -hidden str _render_markdown_sh_lib %{
     # kakoune single-quote escaping: ' becomes ''
     # Fork-free: these run once per emitted range, and forking sed in them
@@ -66,6 +65,16 @@ provide-module render-markdown %{
       done
       printf '%s' "$out"
     }
+    # RM_NL is one newline, built without command substitution or a literal
+    # brace so it is safe to embed in this option body.
+    RM_NL=$(printf '\n_')
+    RM_NL=${RM_NL%_}
+
+    # rm_chomp: drop one trailing newline from the current selection into $s
+    rm_chomp() {
+      s=${kak_selection%"$RM_NL"}
+    }
+
     # emit a bare range: <desc>|<face><text>, + debug-file mirror. The
     # face/text part is escaped per the range-specs format (| and \);
     # rm_emit_desc takes an explicit descriptor for per-position ranges.
@@ -113,8 +122,8 @@ provide-module render-markdown %{
       esac
     }
 
-    # face markup from a face option like {blue+f}󰲡 -> {blue+f}; the close
-    # brace is built via octal so no brace literal appears in this block
+    # face markup from a face option like {blue+f}󰲡 -> {blue+f}; the
+    # close-brace char is built from octal (see the library header)
     rm_head() {
       cb=$(printf '\175')
       case "$1" in
@@ -329,9 +338,7 @@ provide-module render-markdown %{
     }
 
     # Visible display width of face-marked text: drop the {...} face specs
-    # (they are not drawn) before measuring.  The brace characters are built
-    # from octal so no literal brace appears in this block (Kakoune counts
-    # braces even inside quotes).
+    # (they are not drawn) before measuring.
     rm_visible_width() {
       ob=$(printf '\173')
       cb=$(printf '\175')
@@ -469,12 +476,8 @@ provide-module render-markdown %{
           # opening/closing "---" never renders as a rule or setext underline.
           # The matcher only produces line-1 matches; guard anyway.
           [ "$(rm_line)" -eq 1 ] || exit 0
-          nl=$(printf '\n_') # nl is a newline, to split the lines apart
-          nl=${nl%_}
-          s=$kak_selection
-          case "$s" in
-            *"$nl") s=${s%$nl} ;; # drop a single trailing newline
-          esac
+          rm_chomp
+          nl=$RM_NL
           line=1
           consumed=
           rest=$s
@@ -514,12 +517,8 @@ provide-module render-markdown %{
           # selection is every text line followed by the underline.  Face
           # each text line, hide the underline, consume all of them.
           if rm_consumed; then exit 0; fi
-          nl=$(printf '\n_') # nl is a newline, to split the lines apart
-          nl=${nl%_}
-          s=$kak_selection
-          case "$s" in
-            *"$nl") s=${s%$nl} ;; # drop a single trailing newline
-          esac
+          rm_chomp
+          nl=$RM_NL
           case "$s" in
             *"$nl"*) ;; # need at least one text line plus the underline
             *) exit 0 ;;
@@ -620,7 +619,7 @@ provide-module render-markdown %{
         blockquote)
           # replace the leading '>' run with one glyph per '>' (whitespace is
           # kept): '> ' -> '▋ ', '>text' -> '▋text', '>> t' -> '▋▋ t'
-          cb=$(printf '\175') # close-brace char, so no brace literal appears here
+          cb=$(printf '\175') # close-brace char, from octal (see header)
           head=$(printf '%s' "$kak_opt_render_markdown_blockquote" | sed "s/$cb.*/$cb/")
           glyph=$(printf '%s' "$kak_opt_render_markdown_blockquote" | sed "s/.*$cb//;s/[[:space:]]*$//")
           s=$kak_selection
@@ -748,36 +747,25 @@ provide-module render-markdown %{
           ;;
         em-double)
           # **x** / __x__ -> bold face (markdown semantics)
+          face=$kak_opt_render_markdown_bold
           case "$kak_selection" in
-            __*)
-              face=$kak_opt_render_markdown_bold
-              content=$(rm_strip "$kak_selection" '_')
-              ;;
-            *)
-              face=$kak_opt_render_markdown_bold
-              content=$(rm_strip "$kak_selection" '*')
-              ;;
+            __*) content=$(rm_strip "$kak_selection" '_') ;;
+            *) content=$(rm_strip "$kak_selection" '*') ;;
           esac
           rm_emit em "$face" "$content"
           ;;
         em-single)
           # *x* / _x_ -> italics face (markdown semantics)
+          face=$kak_opt_render_markdown_italics
           case "$kak_selection" in
-            _*)
-              face=$kak_opt_render_markdown_italics
-              content=$(rm_strip "$kak_selection" '_')
-              ;;
-            *)
-              face=$kak_opt_render_markdown_italics
-              content=$(rm_strip "$kak_selection" '*')
-              ;;
+            _*) content=$(rm_strip "$kak_selection" '_') ;;
+            *) content=$(rm_strip "$kak_selection" '*') ;;
           esac
           rm_emit em "$face" "$content"
           ;;
       esac
     }
   }
-  # end-sh-lib
 
   # shared per-selection pipeline: skip selections inside a language-tagged
   # code fence, then classify + emit. $1 = classification kind.
@@ -785,7 +773,9 @@ provide-module render-markdown %{
     set-option global _render_markdown_kind %arg{1}
     evaluate-commands -itersel %{
       evaluate-commands %sh{
-        # Ensure Kakoune passes all option vars used by the classifier.
+        # Load-bearing: Kakoune only exports an option to %sh if its name is
+        # referenced here (the classifier reads them from the environment), so
+        # deleting a name silently disables that feature.
         # kak_opt_render_markdown_heading_1 kak_opt_render_markdown_heading_2
         # kak_opt_render_markdown_heading_3 kak_opt_render_markdown_heading_4
         # kak_opt_render_markdown_heading_5 kak_opt_render_markdown_heading_6
@@ -793,13 +783,11 @@ provide-module render-markdown %{
         # kak_opt_render_markdown_bullet kak_opt_render_markdown_horizontal_rule
         # kak_opt_render_markdown_blockquote kak_opt_render_markdown_link_image
         # kak_opt_render_markdown_link_web kak_opt_render_markdown_link_link
-        # kak_opt_render_markdown_link_mail kak_opt_render_markdown_codeblock_start
-        # kak_opt_render_markdown_codeblock_end kak_opt_render_markdown_strikethrough
+        # kak_opt_render_markdown_link_mail kak_opt_render_markdown_strikethrough
         # kak_opt_render_markdown_italics kak_opt_render_markdown_bold
         # kak_opt_render_markdown_inline_code kak_opt__render_markdown_debug_file
         # kak_opt_render_markdown_table_separator kak_opt_render_markdown_table_pipe
-        # kak_opt__render_markdown_consumed_lines kak_selection kak_selection_desc
-        # kak_opt__render_markdown_fence_spans
+        # kak_opt__render_markdown_consumed_lines kak_selection
         # Skip matches that start inside a non-markdown code fence (the codeblock
         # matcher ran first and recorded those spans).
         line=${kak_selection_desc%%.*}
@@ -901,11 +889,6 @@ provide-module render-markdown %{
           set-option -add global _render_markdown_fence_ends "%val{selection_desc}"
         }
         evaluate-commands %sh{
-          # env vars must be referenced here (or in a comment) to be exported:
-          # kak_opt__render_markdown_fence_starts kak_opt__render_markdown_fence_ends
-          # kak_opt_render_markdown_codeblock_start
-          # kak_opt_render_markdown_codeblock_end
-          # kak_opt__render_markdown_debug_file
           eval "$kak_opt__render_markdown_sh_lib"
           emit_fence_ranges() { # $1 = marker ranges, $2 = escaped face
             quoted=$(rm_quote "$2")
@@ -986,8 +969,9 @@ provide-module render-markdown %{
     }
   }
 
-  # emphasis family: combined regex from original, kept for reliable overlap
-  # handling; per-match kind is decided by the library's emphasis dispatcher
+  # emphasis family: one scan matches code, strikethrough, bold and italics,
+  # which avoids overlap problems between separate matchers; the library's
+  # emphasis dispatcher decides the kind of each match
   define-command -hidden _render-markdown-match-emphasis %{
     evaluate-commands -draft %{
       execute-keys "gtGbx"
@@ -1045,9 +1029,11 @@ provide-module render-markdown %{
       evaluate-commands %sh{
         eval "$kak_opt__render_markdown_sh_lib"
         aligned=$(printf '%s' "$kak_selection" | render_markdown_table_align)
-        printf "set-register m '%s'\n" "$(rm_quote "$aligned")"
+        # The selection ends with a newline; keep the register linewise so the
+        # line after the table is not joined onto its last row.
+        printf "set-register m '%s\n'\n" "$(rm_quote "$aligned")"
       }
-      execute-keys 'd"mp'
+      execute-keys 'd"mP'
     }
   }
 

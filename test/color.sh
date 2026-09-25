@@ -6,10 +6,8 @@
 #   FORCE_COLOR set (non-empty) -> always color, unless NO_COLOR is set
 #   otherwise                   -> color only when stdout is a tty
 #
-# Sourcing this file runs cm_init_color immediately, so scripts must source
-# it at top level (NOT inside a command substitution): [ -t 1 ] only reports
-# a terminal for the real stdout. The resulting $cm_color_enabled is
-# inherited by subshells, which is where the cm_* helpers run.
+# Sourcing runs cm_init_color immediately, so source at top level (not in a
+# command substitution); $cm_color_enabled is inherited by the cm_* subshells.
 
 # cm_init_color: decide color-on/off once.
 cm_color_enabled=no

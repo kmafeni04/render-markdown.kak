@@ -1,8 +1,6 @@
 #!/usr/bin/env sh
-# Helpers for driving a headless kakoune via its built-in json ui: a client
-# with a real window but no terminal needed. Sourced by run-fixture.sh and
-# smoke.sh. The json ui reads json-rpc from stdin and writes draw events to
-# stdout; the client exits when stdin hits EOF.
+# Headless kakoune helpers (json ui: real window, no terminal). The client
+# reads json-rpc on stdin and exits at EOF. Sourced by the integration tests.
 #
 # usage:
 #   kak_json_start <session> <workdir> <init commands>

@@ -1,4 +1,4 @@
-# Scroll fixture
+# Fence guard fixture
 
 Intro text with **bold** and `code` before any fence.
 

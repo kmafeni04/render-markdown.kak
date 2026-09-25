@@ -3,7 +3,6 @@
 set -eu
 case $0 in */*) cd "${0%/*}" ;; esac # POSIX dirname substitute
 
-# colors for section headers
 # shellcheck disable=SC1091  # color.sh is linted separately
 . ./color.sh
 
@@ -26,6 +25,10 @@ case $cmd in
     header 'Smoke test:'
     ./integration/smoke.sh
     ;;
+  format)
+    header 'Format test:'
+    ./integration/format.sh
+    ;;
   bless)
     header 'Bless goldens:'
     ./integration/bless.sh
@@ -41,11 +44,13 @@ case $cmd in
     ./integration/run.sh
     header 'Smoke test:'
     ./integration/smoke.sh
+    header 'Format test:'
+    ./integration/format.sh
     header 'Lint:'
     dash ./lint.sh
     ;;
   *)
-    printf 'usage: test/run.sh [unit|integration|smoke|bless|lint|all]\n' >&2
+    printf 'usage: test/run.sh [unit|integration|smoke|format|bless|lint|all]\n' >&2
     exit 2
     ;;
 esac
