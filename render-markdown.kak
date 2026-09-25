@@ -108,21 +108,6 @@ provide-module render-markdown %{
       fi
     }
 
-    rm_strip() {
-      s=$1
-      del=$2
-      out=
-      while [ -n "$s" ]; do
-        c=${s%"${s#?}"}
-        case "$del" in
-          *"$c"*) ;;
-          *) out="$out$c" ;;
-        esac
-        s=${s#?}
-      done
-      printf '%s' "$out"
-    }
-
     # drop leading and trailing runs of $2 (emphasis markers) from $1,
     # keeping any occurrence inside the content (an intraword "_" is content)
     rm_strip_edges() {
@@ -1048,10 +1033,10 @@ provide-module render-markdown %{
           rm_emit link "$kak_opt_render_markdown_link_mail" "$content"
           ;;
         inline-code)
-          rm_emit code "$kak_opt_render_markdown_inline_code" "$(rm_strip "$kak_selection" '`')"
+          rm_emit code "$kak_opt_render_markdown_inline_code" "$(rm_strip_edges "$kak_selection" '`')"
           ;;
         strike)
-          rm_emit strike "$kak_opt_render_markdown_strikethrough" "$(rm_strip "$kak_selection" '~')"
+          rm_emit strike "$kak_opt_render_markdown_strikethrough" "$(rm_strip_edges "$kak_selection" '~')"
           ;;
         emphasis)
           if rm_consumed; then exit 0; fi
