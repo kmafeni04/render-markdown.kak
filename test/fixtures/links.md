@@ -5,3 +5,4 @@
 - [a|b](pipe.md)
 - [reference][ref]
 - <user@test.com>
+- ([parenthesized](test.md))

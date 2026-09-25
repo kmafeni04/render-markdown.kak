@@ -994,7 +994,7 @@ provide-module render-markdown %{
     evaluate-commands -draft %{
       _render-markdown-select
       try %{
-        execute-keys "s!?\[[^\[]+\]\([^\(]+\)<ret>"
+        execute-keys "s!?\[[^\[]+\]\([^()]+\)<ret>"
         _render-markdown-handle link
       }
       try %{
