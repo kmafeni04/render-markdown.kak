@@ -427,15 +427,10 @@ provide-module render-markdown %{
       done
     }
 
-    # render plain heading/table text (no code, links or strikethrough) using
-    # the spec emphasis spans; byte positions index $1
-    rm_inline_spec() {
-      txt=$1
-      base=$2
-      inside=${base#?}
-      inside=${inside%?}
-      rm_emphasis_parse "$txt"
-      len=${#txt}
+    # from rm_emphasis_parse's spans, fill the per-byte emphasis attribute
+    # (rm_eattr*) and dropped-marker (rm_eskip*) arrays for text $1
+    rm_emphasis_attrs() {
+      len=${#1}
       i=0
       while [ "$i" -lt "$len" ]; do
         eval "rm_eattr$i=0; rm_eskip$i=0"
@@ -462,6 +457,17 @@ provide-module render-markdown %{
           i=$((i + 1))
         done
       done
+    }
+
+    # render plain heading/table text (no code, links or strikethrough) using
+    # the spec emphasis spans; byte positions index $1
+    rm_inline_spec() {
+      txt=$1
+      base=$2
+      inside=${base#?}
+      inside=${inside%?}
+      rm_emphasis_parse "$txt"
+      rm_emphasis_attrs "$txt"
       out=
       attr=0
       i=0
@@ -1119,26 +1125,21 @@ provide-module render-markdown %{
           line=$(rm_line)
           txt=$kak_selection
           rm_emphasis_parse "$txt"
+          rm_emphasis_attrs "$txt"
           i=0
           rest=$txt
           while [ -n "$rest" ]; do
             ch=${rest%"${rest#?}"}
             rest=${rest#?}
             eval "rm_echar$i=\$ch"
-            eval "rm_eattr$i=0; rm_eskip$i=0; rm_ecode$i=; rm_etop$i=; rm_esolo$i="
+            eval "rm_ecode$i=; rm_etop$i=; rm_esolo$i="
             i=$((i + 1))
           done
-          # top-level spans get one range each; every span also unions its
-          # mask into the content positions it covers
+          # one range per top-level span: nested spans render inside a parent
           for span in $RM_EMP_SPANS; do
             mstart=${span%%,*}
-            rest=${span#*,}
-            mend=${rest%%,*}
-            rest=${rest#*,}
-            cstart=${rest%%,*}
-            rest=${rest#*,}
-            cend=${rest%%,*}
-            mask=${rest#*,}
+            r=${span#*,}
+            mend=${r%%,*}
             top=1
             for other in $RM_EMP_SPANS; do
               [ "$other" = "$span" ] && continue
@@ -1152,19 +1153,6 @@ provide-module render-markdown %{
               fi
             done
             if [ "$top" -eq 1 ]; then eval "rm_etop$mstart=$mend"; fi
-            i=$cstart
-            while [ "$i" -lt "$cend" ]; do
-              eval "rm_eattr$i=$((rm_eattr$i | mask))"
-              i=$((i + 1))
-            done
-          done
-          for mark in $RM_EMP_USED; do
-            i=${mark%%,*}
-            end=${mark#*,}
-            while [ "$i" -lt "$end" ]; do
-              eval "rm_eskip$i=1"
-              i=$((i + 1))
-            done
           done
           # code spans drop their backticks and, outside every span, get
           # their own range
