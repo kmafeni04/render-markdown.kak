@@ -29,6 +29,10 @@ case $cmd in
     header 'Format test:'
     ./integration/format.sh
     ;;
+  cache)
+    header 'Cache test:'
+    ./integration/cache.sh
+    ;;
   bless)
     header 'Bless goldens:'
     ./integration/bless.sh
@@ -46,11 +50,13 @@ case $cmd in
     ./integration/smoke.sh
     header 'Format test:'
     ./integration/format.sh
+    header 'Cache test:'
+    ./integration/cache.sh
     header 'Lint:'
     dash ./lint.sh
     ;;
   *)
-    printf 'usage: test/run.sh [unit|integration|smoke|format|bless|lint|all]\n' >&2
+    printf 'usage: test/run.sh [unit|integration|smoke|format|cache|bless|lint|all]\n' >&2
     exit 2
     ;;
 esac

@@ -8,6 +8,20 @@ provide-module render-markdown %{
   declare-option -hidden str-list _render_markdown_fence_starts ''
   declare-option -hidden str-list _render_markdown_fence_ends ''
 
+  # render cache: the viewport probe, the last rendered line range (grown by
+  # render_markdown_margin), and the buffer (name + timestamp) it belongs to
+  declare-option -hidden str _render_markdown_view ''
+  declare-option -hidden str _render_markdown_buf ''
+  declare-option -hidden str _render_markdown_ts ''
+  declare-option -hidden str _render_markdown_lines ''
+  declare-option -hidden str _render_markdown_select_range ''
+  declare-option -hidden str _render_markdown_cache ''
+  declare-option -hidden str _render_markdown_cache_buf ''
+
+  # how many lines beyond the viewport to render and cache, so scrolling
+  # inside that margin does not re-run the matchers
+  declare-option int render_markdown_margin 24
+
   declare-option str render_markdown_heading_1 "{blue+f}󰲡"
   declare-option str render_markdown_heading_2 "{green+f} 󰲣"
   declare-option str render_markdown_heading_3 "{yellow+f}  󰲥"
@@ -70,6 +84,10 @@ provide-module render-markdown %{
     RM_NL=$(printf '\n_')
     RM_NL=${RM_NL%_}
 
+    # literal brace characters, built from octal so no brace appears in this body
+    OB=$(printf '\173')
+    CB=$(printf '\175')
+
     # rm_chomp: drop one trailing newline from the current selection into $s
     rm_chomp() {
       s=${kak_selection%"$RM_NL"}
@@ -91,7 +109,18 @@ provide-module render-markdown %{
     }
 
     rm_strip() {
-      printf '%s' "$1" | tr -d "$2"
+      s=$1
+      del=$2
+      out=
+      while [ -n "$s" ]; do
+        c=${s%"${s#?}"}
+        case "$del" in
+          *"$c"*) ;;
+          *) out="$out$c" ;;
+        esac
+        s=${s#?}
+      done
+      printf '%s' "$out"
     }
 
     rm_escape() {
@@ -125,7 +154,7 @@ provide-module render-markdown %{
     # face markup from a face option like {blue+f}󰲡 -> {blue+f}; the
     # close-brace char is built from octal (see the library header)
     rm_head() {
-      cb=$(printf '\175')
+      cb=$CB
       case "$1" in
         *"$cb"*) printf '%s' "${1%%$cb*}$cb" ;;
         *) printf '' ;;
@@ -136,8 +165,8 @@ provide-module render-markdown %{
     # plain attribute specs ({+b@Default} and {+i@Default} become {+bi@Default}),
     # otherwise keep the bold face.  ob and cb are the brace characters.
     rm_merge_triple() { # $1 = bold face, $2 = italics face
-      ob=$(printf '\173')
-      cb=$(printf '\175')
+      ob=$OB
+      cb=$CB
       bold=${1#$ob}
       bold=${bold%$cb}
       italics=${2#$ob}
@@ -286,6 +315,10 @@ provide-module render-markdown %{
     # two columns, zero-width marks count none, everything else one.  od gives
     # raw bytes, so the UTF-8 decoding does not depend on the shell locale.
     rm_width() {
+      case "$1" in
+        *[!\ -~]*) ;; # non-printable-ASCII byte: decode below
+        *) printf '%s' "${#1}"; return ;;
+      esac
       printf '%s' "$1" | od -An -tu1 | awk '
         function wide(c) {
           if (c >= 4352 && c <= 4447) return 1
@@ -340,9 +373,7 @@ provide-module render-markdown %{
     # Visible display width of face-marked text: drop the {...} face specs
     # (they are not drawn) before measuring.
     rm_visible_width() {
-      ob=$(printf '\173')
-      cb=$(printf '\175')
-      rm_width "$(printf '%s' "$1" | sed "s/$ob[^$cb]*$cb//g")"
+      rm_width "$(printf '%s' "$1" | sed "s/$OB[^$CB]*$CB//g")"
     }
 
     render_markdown_table_align() {
@@ -619,7 +650,7 @@ provide-module render-markdown %{
         blockquote)
           # replace the leading '>' run with one glyph per '>' (whitespace is
           # kept): '> ' -> '▋ ', '>text' -> '▋text', '>> t' -> '▋▋ t'
-          cb=$(printf '\175') # close-brace char, from octal (see header)
+          cb=$CB # close-brace char (see the library header)
           head=$(printf '%s' "$kak_opt_render_markdown_blockquote" | sed "s/$cb.*/$cb/")
           glyph=$(printf '%s' "$kak_opt_render_markdown_blockquote" | sed "s/.*$cb//;s/[[:space:]]*$//")
           s=$kak_selection
@@ -643,8 +674,12 @@ provide-module render-markdown %{
           pos=${kak_selection_desc%%,*}
           line=${pos%%.*}
           col=${pos#*.}
-          content=$(printf '%s' "$kak_selection" | tr -d ' \t|')
-          if [ -n "$content" ] && ! printf '%s' "$content" | grep -q '[^-:]'; then
+          sep=0
+          case "$kak_selection" in
+            *[!\|:[:space:]-]*) ;; # cell text: not a separator row
+            *[-:]*) sep=1 ;;
+          esac
+          if [ "$sep" -eq 1 ]; then
             pipes=$(printf '%s' "$kak_selection" | tr -cd '|' | wc -c)
             s=$kak_selection
             drawn=
@@ -811,9 +846,15 @@ provide-module render-markdown %{
   }
 
 
+  # Select the range the matchers scan (viewport plus render_markdown_margin).
+  # `select` leaves the cursor in place, so it never scrolls the window.
+  define-command -hidden _render-markdown-select %{
+    select "%opt{_render_markdown_select_range}"
+  }
+
   define-command -hidden _render-markdown-match-headings %{
     evaluate-commands -draft %{
-      execute-keys "gtGbx"
+      _render-markdown-select
       try %{
         execute-keys "s^>?\h*#+\s<ret>s#+<ret>Gl"
         _render-markdown-handle heading
@@ -828,7 +869,7 @@ provide-module render-markdown %{
   # closing delimiter (or running past a blank line into the document body).
   define-command -hidden _render-markdown-match-frontmatter %{
     evaluate-commands -draft %{
-      execute-keys "gtGbx"
+      _render-markdown-select
       try %{
         execute-keys "s^---\h*\n(?:(?!---\n)(?!\n)[^\n]*\n)*---\h*\n<ret>"
         _render-markdown-handle front-matter
@@ -842,7 +883,7 @@ provide-module render-markdown %{
   # multi-line paragraph is covered as well.
   define-command -hidden _render-markdown-match-setext %{
     evaluate-commands -draft %{
-      execute-keys "gtGbx"
+      _render-markdown-select
       try %{
         execute-keys "s^\h*(=+|-+)\h*$<ret>"
         execute-keys "<a-i>p"
@@ -911,7 +952,7 @@ provide-module render-markdown %{
 
   define-command -hidden _render-markdown-match-lists %{
     evaluate-commands -draft %{
-      execute-keys "gtGbx"
+      _render-markdown-select
       try %{
         execute-keys "s^\h*>?\h*>*(-\h\[[x<space>]\]|[-*+]\h|[0-9]{1,9}[.)]\h)<ret>s(-\h\[[x<space>]\]|[-*+]\h|[0-9]{1,9}[.)]\h)<ret>_L"
         _render-markdown-handle list
@@ -921,7 +962,7 @@ provide-module render-markdown %{
 
   define-command -hidden _render-markdown-match-hrules %{
     evaluate-commands -draft %{
-      execute-keys "gtGbx"
+      _render-markdown-select
       try %{
         execute-keys "s^\h*>?\h*>*(-(\h*-){2,}|_(\h*_){2,}|\*(\h*\*){2,})\h*\n<ret>s[-_*](\h*[-_*])*<ret>"
         _render-markdown-handle hrule
@@ -931,7 +972,7 @@ provide-module render-markdown %{
 
   define-command -hidden _render-markdown-match-blockquotes %{
     evaluate-commands -draft %{
-      execute-keys "gtGbx"
+      _render-markdown-select
       try %{
         execute-keys "s^\h*<gt>+\h*<ret>"
         _render-markdown-handle blockquote
@@ -941,7 +982,7 @@ provide-module render-markdown %{
 
   define-command -hidden _render-markdown-match-tables %{
     evaluate-commands -draft %{
-      execute-keys "gtGbx"
+      _render-markdown-select
       try %{
         execute-keys "s^\h*\|[^\n]*<ret>"
         _render-markdown-handle table
@@ -951,18 +992,18 @@ provide-module render-markdown %{
 
   define-command -hidden _render-markdown-match-links %{
     evaluate-commands -draft %{
-      execute-keys "gtGbx"
+      _render-markdown-select
       try %{
         execute-keys "s!?\[[^\[]+\]\([^\(]+\)<ret>"
         _render-markdown-handle link
       }
       try %{
-        execute-keys "gtGbx"
+        _render-markdown-select
         execute-keys "s!?\[[^\[]+\]\[[^\[]+\]<ret>"
         _render-markdown-handle link
       }
       try %{
-        execute-keys "gtGbx"
+        _render-markdown-select
         execute-keys "s<lt>\S+@\S+\.[^\n]+<gt><ret>"
         _render-markdown-handle link-mail
       }
@@ -974,7 +1015,7 @@ provide-module render-markdown %{
   # emphasis dispatcher decides the kind of each match
   define-command -hidden _render-markdown-match-emphasis %{
     evaluate-commands -draft %{
-      execute-keys "gtGbx"
+      _render-markdown-select
       try %{
         execute-keys "s(?<lt>!\w)(?<lt>!\\)(?:`[^`\n]+`|~~[^~\n]+~~|(?<lt>!\*)(?:\*\*\*[^*\n]+\*\*\*|\*\*[^*\n]+\*\*|\*[^*\n]+\*)(?!\*)|(?<lt>!_)(?:___[^_\n]+___|__[^_\n]+__|_[^_\n]+_)(?!_))(?!\w)<ret>"
         _render-markdown-handle emphasis
@@ -983,6 +1024,8 @@ provide-module render-markdown %{
   }
 
   define-command render-markdown-enable %{
+    set-option window _render_markdown_cache ''
+    set-option window _render_markdown_cache_buf ''
     hook -group render-markdown-update window NormalIdle .* _render-markdown-update
     add-highlighter window/_render_markdown_ranges replace-ranges _render_markdown_ranges
   }
@@ -1037,7 +1080,7 @@ provide-module render-markdown %{
     }
   }
 
-  define-command -hidden _render-markdown-update %{
+  define-command -hidden _render-markdown-render %{
     set-option window _render_markdown_bare_ranges
     set-option global _render_markdown_consumed_lines
     # a bare set-option clears these str-list accumulators
@@ -1045,11 +1088,11 @@ provide-module render-markdown %{
     set-option global _render_markdown_fence_starts
     set-option global _render_markdown_fence_ends
     evaluate-commands -draft %{
-      # matcher table: one command per feature, each re-selecting the viewable
-      # buffer (gtGbx) before its search.  Front matter runs first so its
-      # delimiters never render as rules or headings; codeblocks run next
-      # because their whole-buffer scan records the fence spans every other
-      # matcher consults.
+      # matcher table: one command per feature, each re-selecting the render
+      # range (_render-markdown-select) before its search.  Front matter runs
+      # first so its delimiters never render as rules or headings; codeblocks
+      # run next because their whole-buffer scan records the fence spans every
+      # other matcher consults.
       _render-markdown-match-frontmatter
       _render-markdown-match-codeblocks
       _render-markdown-match-headings
@@ -1066,6 +1109,44 @@ provide-module render-markdown %{
       _render-markdown-match-emphasis
     }
     set-option window _render_markdown_ranges %val{timestamp} %opt{_render_markdown_bare_ranges}
+  }
+
+  # Re-render only when the buffer changed or the viewport left the cached
+  # band; a scroll inside the band is a no-op.
+  define-command -hidden _render-markdown-update %{
+    set-option global _render_markdown_buf %val{bufname}
+    set-option global _render_markdown_ts %val{timestamp}
+    set-option global _render_markdown_lines %val{buf_line_count}
+    evaluate-commands -draft %{
+      execute-keys "gtGbx"
+      set-option global _render_markdown_view %val{selection_desc}
+    }
+    evaluate-commands %sh{
+      view=$kak_opt__render_markdown_view
+      vtop=${view%%.*}
+      vbot=${view#*,}
+      vbot=${vbot%%.*}
+      buf=$kak_opt__render_markdown_buf
+      ts=$kak_opt__render_markdown_ts
+      lines=$kak_opt__render_markdown_lines
+      margin=$kak_opt_render_markdown_margin
+      mtop=$((vtop - margin))
+      [ "$mtop" -lt 1 ] && mtop=1
+      mbot=$((vbot + margin))
+      [ "$mbot" -gt "$lines" ] && mbot=$lines
+      # the cache is window-scoped, so it also has to match the buffer
+      set -- $kak_opt__render_markdown_cache
+      if [ "$kak_opt__render_markdown_cache_buf" = "$buf" ] &&
+        [ "$1" = "$ts" ] && [ "$vtop" -ge "$2" ] && [ "$vbot" -le "$3" ]; then
+        exit 0
+      fi
+      # select clamps the column but not the line; mtop/mbot are clamped above
+      printf "set-option global _render_markdown_select_range '%s.1,%s.999999'\n" "$mtop" "$mbot"
+      printf "set-option window _render_markdown_cache '%s %s %s'\n" "$ts" "$mtop" "$mbot"
+      # %val{bufname} is expanded by Kakoune, so quoting is handled for us
+      printf '%s\n' 'set-option window _render_markdown_cache_buf %val{bufname}'
+      printf '_render-markdown-render\n'
+    }
   }
 }
 

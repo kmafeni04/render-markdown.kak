@@ -31,9 +31,11 @@ larger sample. The render happens automatically a moment after opening (the
 update runs on NormalIdle), so no other setup is needed — just a terminal
 with a nerd-font glyph set.
 
-Only the lines on screen are rendered, so in a long file the rest fills in
-as you scroll; code fences are the exception (their markers are found
-across the whole buffer, since a block can outlive the screen).
+The plugin also renders `render_markdown_margin` lines above and below the
+screen and caches them, so scrolling within that band reuses the ranges
+instead of re-running the matchers. Code fences are the exception (their
+markers are found across the whole buffer, since a block can outlive the
+screen).
 
 ## Rendering Support
 
@@ -71,7 +73,8 @@ top of `render-markdown.kak`); set one to change that rendering:
 | `render_markdown_table_separator`, `render_markdown_table_pipe` | Table grid line and cell bars |
 
 Rendering is toggled with `render-markdown-enable`, `render-markdown-disable`
-and `render-markdown-toggle`.
+and `render-markdown-toggle`. `render_markdown_margin` (default 24) is not a
+face: it sets how many lines beyond the viewport are rendered and cached.
 
 ## Table commands
 
@@ -91,7 +94,7 @@ padding the rendered text, so the pipes never move.
 Local, POSIX-only test suite (verified under `dash`):
 
 ```sh
-dash test/run.sh [unit|integration|smoke|format|bless|lint|all]
+dash test/run.sh [unit|integration|smoke|format|cache|bless|lint|all]
 ```
 
 - `unit` — pure-shell tests for the classifier library (no Kakoune needed)
@@ -102,6 +105,8 @@ dash test/run.sh [unit|integration|smoke|format|bless|lint|all]
 - `smoke` — checks the replace-ranges highlighter really renders glyphs
 - `format` — runs `render-markdown-table-format` and checks the line after
   the table is left intact
+- `cache` — checks the margin render cache reuses ranges and re-renders after
+  scrolling past them
 - `bless` — regenerates goldens from current output (use when behaviour
   intentionally changes)
 - `lint` — shellcheck on all shell scripts, plus a plugin sanity check
