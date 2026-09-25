@@ -25,9 +25,9 @@ run_one() {
   esac
 }
 
-# bless is not part of the default run
 cmd=${1:-all}
 if [ "$cmd" = all ]; then
+  # bless is not part of the default run
   for t in unit integration smoke format cache lint; do run_one "$t"; done
 elif ! run_one "$cmd"; then
   printf 'usage: test/run.sh [unit|integration|smoke|format|cache|bless|lint|all]\n' >&2
