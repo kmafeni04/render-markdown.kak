@@ -97,7 +97,7 @@ provide-module render-markdown %{
     # face/text part is escaped per the range-specs format (| and \);
     # rm_emit_desc takes an explicit descriptor for per-position ranges.
     rm_emit() {
-      rm_emit_desc "$kak_selection_desc" "$2" "$3"
+      rm_emit_desc "$kak_selection_desc" "$1" "$2"
     }
 
     rm_emit_desc() {
@@ -918,7 +918,7 @@ provide-module render-markdown %{
           if [ "$level" -gt 6 ]; then exit 0; fi
           eval "face=\$kak_opt_render_markdown_heading_$level"
           content=$(printf '%s' "$kak_selection" | sed -e 's/^#*//' -e "s/'/''/g")
-          rm_emit heading "$face" "$(rm_inline "$content" "$(rm_head "$face")")"
+          rm_emit "$face" "$(rm_inline "$content" "$(rm_head "$face")")"
           # the whole heading line is consumed; inline kinds must not match inside it
           printf "set-option -add global _render_markdown_consumed_lines %s\n" "$(rm_line)"
           ;;
@@ -1009,8 +1009,8 @@ provide-module render-markdown %{
           if rm_consumed; then exit 0; fi
           content=
           case "$kak_selection" in
-            -*\[x\]*) face=$kak_opt_render_markdown_checkbox_checked ;;
-            -*\[*\]*) face=$kak_opt_render_markdown_checkbox_unchecked ;;
+            [-*+]*\[[xX]\]*) face=$kak_opt_render_markdown_checkbox_checked ;;
+            [-*+]*"[ ]"*) face=$kak_opt_render_markdown_checkbox_unchecked ;;
             [0-9]*)
               # an ordered marker is content, so it keeps its number.  Reuse
               # the bullet's face when it has one, so both kinds look alike
@@ -1020,11 +1020,11 @@ provide-module render-markdown %{
               ;;
             *) face=$kak_opt_render_markdown_bullet ;;
           esac
-          rm_emit list "$face" "$content"
+          rm_emit "$face" "$content"
           ;;
         hrule)
           if rm_consumed; then exit 0; fi
-          rm_emit hrule "$kak_opt_render_markdown_horizontal_rule" ''
+          rm_emit "$kak_opt_render_markdown_horizontal_rule" ''
           # the rule line is consumed: emphasis markers inside it must not match
           printf "set-option -add global _render_markdown_consumed_lines %s\n" "$(rm_line)"
           ;;
@@ -1044,7 +1044,7 @@ provide-module render-markdown %{
               *) drawn="$drawn$c" ;;
             esac
           done
-          rm_emit blockquote "$head" "$drawn"
+          rm_emit "$head" "$drawn"
           ;;
         table)
           # rows are consumed so inline kinds never render inside cells.
@@ -1081,7 +1081,7 @@ provide-module render-markdown %{
               esac
               drawn="$drawn$c"
             done
-            rm_emit table "$kak_opt_render_markdown_table_separator" "$drawn"
+            rm_emit "$kak_opt_render_markdown_table_separator" "$drawn"
           else
             # byte offsets, not characters: grep -ob, since a cell may hold
             # multi-byte characters and Kakoune range columns count bytes
@@ -1122,12 +1122,12 @@ provide-module render-markdown %{
             *http*) face=$kak_opt_render_markdown_link_web ;;
             *) face=$kak_opt_render_markdown_link_link ;;
           esac
-          rm_emit link "$face" "$content"
+          rm_emit "$face" "$content"
           ;;
         link-mail)
           if rm_consumed; then exit 0; fi
           content=$(printf '%s' "$kak_selection" | sed -e 's/^<//' -e 's/>$//' -e "s/'/''/g")
-          rm_emit link "$kak_opt_render_markdown_link_mail" "$content"
+          rm_emit "$kak_opt_render_markdown_link_mail" "$content"
           ;;
         emphasis)
           if rm_consumed; then exit 0; fi
@@ -1349,7 +1349,7 @@ provide-module render-markdown %{
     evaluate-commands -draft %{
       _render-markdown-select
       try %{
-        execute-keys "s^\h*>?\h*>*(-\h\[[x<space>]\]|[-*+]\h|[0-9]{1,9}[.)]\h)<ret>s(-\h\[[x<space>]\]|[-*+]\h|[0-9]{1,9}[.)]\h)<ret>_L"
+        execute-keys "s^\h*>?\h*>*([-*+]\h\[[xX<space>]\]|[-*+]\h|[0-9]{1,9}[.)]\h)<ret>s([-*+]\h\[[xX<space>]\]|[-*+]\h|[0-9]{1,9}[.)]\h)<ret>_L"
         _render-markdown-handle list
       }
     }

@@ -10,3 +10,8 @@
 10. Tenth
 1) Paren
 1.5 apples are not a list
+
+* [x] star bullet checked
++ [ ] plus bullet unchecked
+- [X] uppercase checked
+  * [X] nested star checked

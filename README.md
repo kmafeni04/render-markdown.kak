@@ -119,6 +119,8 @@ dash test/run.sh [unit|integration|smoke|format|cache|bless|lint|all]
 - `lint` — shellcheck on all shell scripts, plus a plugin sanity check
   (braces balanced, the embedded shell library parses)
 
+With no argument the runner runs `all`: every test above except `bless`.
+
 Requires `kak` for the integration and smoke tests. The shell scripts are
 POSIX-only and verified under `dash` (any POSIX sh will also run them).
 When a golden changes, review the diff and re-bless only if the change is
@@ -133,13 +135,19 @@ intended.
 - Setext headings are recognised for the paragraph immediately above the
   underline; a list item or blockquote line directly above `---` stays a list
   or quote plus a rule
+- An ATX heading's optional closing sequence (`## Heading ##`) is kept in the
+  rendered text instead of being stripped
 - Backtick fences longer than six backticks are not supported: the opening and
   closing runs must be the same length, and only lengths three through six are
   matched
+- Inline code spans use a single backtick, so CommonMark's multi-backtick
+  spans (a run of two or more backticks) are left literal
 - Table cell inline rendering pads with trailing spaces, so cell text that
   contains emphasis is left-aligned rather than preserving interior spacing
 - Links are matched separately from emphasis, so emphasis inside or around a
   link (`[a *b* c](url)`, `*[a](url)*`) emits overlapping ranges
+- Autolinks (`<https://example.com>`) are not matched; only inline, reference
+  and mail links are
 
 ## Reference
 - https://github.com/MeanderingProgrammer/render-markdown.nvim
