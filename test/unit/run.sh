@@ -151,36 +151,36 @@ check 'mail link' \
   "${pre}'13.1,13.8|{b}M u@h.c'" \
   "$(run link-mail)"
 
-kak_selection='`code`' kak_selection_desc='16.1,16.7'
+kak_selection='`code`' kak_selection_desc='16.1,16.6'
 check 'inline code' \
-  "${pre}'16.1,16.7|{c}code'" \
-  "$(run inline-code)"
+  "${pre}'16.1,16.6|{c}code'" \
+  "$(run emphasis)"
 
-kak_selection='~~gone~~' kak_selection_desc='17.1,17.9'
+kak_selection='~~gone~~' kak_selection_desc='17.1,17.8'
 check 'strikethrough' \
-  "${pre}'17.1,17.9|{s}gone'" \
-  "$(run strike)"
+  "${pre}'17.1,17.8|{s}gone'" \
+  "$(run emphasis)"
 
-kak_selection='**b**' kak_selection_desc='18.1,18.7'
+kak_selection='**b**' kak_selection_desc='18.1,18.5'
 check 'double marker -> bold face' \
-  "${pre}'18.1,18.7|{B}b'" \
+  "${pre}'18.1,18.5|{B}b'" \
   "$(run emphasis)"
 
-kak_selection='*i*' kak_selection_desc='19.1,19.5'
+kak_selection='*i*' kak_selection_desc='19.1,19.3'
 check 'single marker -> italics face' \
-  "${pre}'19.1,19.5|{i}i'" \
+  "${pre}'19.1,19.3|{i}i'" \
   "$(run emphasis)"
 
-kak_selection='___x___' kak_selection_desc='28.1,28.8'
+kak_selection='___x___' kak_selection_desc='28.1,28.7'
 check 'triple marker falls back to the bold face' \
-  "${pre}'28.1,28.8|{B}x'" \
+  "${pre}'28.1,28.7|{B}x'" \
   "$(run emphasis)"
 
 export kak_opt_render_markdown_bold='{+b@Default}'
 export kak_opt_render_markdown_italics='{+i@Default}'
-kak_selection='***b***' kak_selection_desc='29.1,29.8'
+kak_selection='***b***' kak_selection_desc='29.1,29.7'
 check 'triple marker merges bold and italics' \
-  "${pre}'29.1,29.8|{+bi@Default}b'" \
+  "${pre}'29.1,29.7|{+bi@Default}b'" \
   "$(run emphasis)"
 export kak_opt_render_markdown_bold='{B}'
 export kak_opt_render_markdown_italics='{i}'
@@ -261,31 +261,56 @@ check 'list skipped on consumed line (thematic break)' '' "$(run list)"
 
 kak_opt__render_markdown_consumed_lines=''
 
-kak_selection='__u__' kak_selection_desc='20.1,20.7'
+kak_selection='__u__' kak_selection_desc='20.1,20.5'
 check 'double underscore -> bold face' \
-  "${pre}'20.1,20.7|{B}u'" \
+  "${pre}'20.1,20.5|{B}u'" \
   "$(run emphasis)"
 
-kak_selection='_u_' kak_selection_desc='21.1,21.5'
+kak_selection='_u_' kak_selection_desc='21.1,21.3'
 check 'single underscore -> italics face' \
-  "${pre}'21.1,21.5|{i}u'" \
+  "${pre}'21.1,21.3|{i}u'" \
   "$(run emphasis)"
 
-kak_selection='`c`' kak_selection_desc='22.1,22.5'
+kak_selection='`c`' kak_selection_desc='22.1,22.3'
 check 'emphasis dispatches inline code' \
-  "${pre}'22.1,22.5|{c}c'" \
+  "${pre}'22.1,22.3|{c}c'" \
   "$(run emphasis)"
 
-kak_selection="a'b" kak_selection_desc='23.1,23.4'
+kak_selection="**a'b**" kak_selection_desc='23.1,23.7'
 check "quote escaping a'b" \
-  "${pre}'23.1,23.4|{B}a''b'" \
-  "$(run em-double)"
+  "${pre}'23.1,23.7|{B}a''b'" \
+  "$(run emphasis)"
 
 # backslash escaping: content with a literal backslash is escaped
-kak_selection='*a\b*' kak_selection_desc='24.1,24.6'
+kak_selection='*a\b*' kak_selection_desc='24.1,24.5'
 check 'content escapes backslash' \
-  "${pre}'24.1,24.6|{i}a\\\\b'" \
+  "${pre}'24.1,24.5|{i}a\\\\b'" \
   "$(run emphasis)"
+
+# the block matcher parses a whole line, so nested and mismatched runs work
+export kak_opt_render_markdown_bold='{+b@Default}'
+export kak_opt_render_markdown_italics='{+i@Default}'
+kak_selection='*foo**bar*' kak_selection_desc='50.1,50.10'
+check 'block rule of 3 leaves the inner run literal' \
+  "${pre}'50.1,50.10|{+i@Default}foo**bar'" \
+  "$(run emphasis)"
+
+kak_selection='**b *i* b**' kak_selection_desc='51.1,51.11'
+check 'block nesting merges the nested face' \
+  "${pre}'51.1,51.11|{+b@Default}b {+bi@Default}i{+b@Default} b'" \
+  "$(run emphasis)"
+
+kak_selection='___x_' kak_selection_desc='52.1,52.5'
+check 'block mismatched run keeps the surplus markers' \
+  "${pre}'52.3,52.5|{+i@Default}x'" \
+  "$(run emphasis)"
+
+kak_selection='a `c` b' kak_selection_desc='53.1,53.7'
+check 'block code span' \
+  "${pre}'53.3,53.5|{c}c'" \
+  "$(run emphasis)"
+export kak_opt_render_markdown_bold='{B}'
+export kak_opt_render_markdown_italics='{i}'
 
 # rm_inline: heading content with inline spans becomes face markup that
 # inherits the heading face (base) and resets back to it

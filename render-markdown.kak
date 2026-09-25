@@ -108,25 +108,6 @@ provide-module render-markdown %{
       fi
     }
 
-    # drop leading and trailing runs of $2 (emphasis markers) from $1,
-    # keeping any occurrence inside the content (an intraword "_" is content)
-    rm_strip_edges() {
-      s=$1
-      while :; do
-        case "$s" in
-          "$2"*) s=${s#?} ;;
-          *) break ;;
-        esac
-      done
-      while :; do
-        case "$s" in
-          *"$2") s=${s%?} ;;
-          *) break ;;
-        esac
-      done
-      printf '%s' "$s"
-    }
-
     rm_escape() {
       s=$1
       out=
@@ -165,25 +146,33 @@ provide-module render-markdown %{
       esac
     }
 
-    # ***text*** is bold and italics: merge the two face specs when both are
-    # plain attribute specs ({+b@Default} and {+i@Default} become {+bi@Default}),
-    # otherwise keep the bold face.  ob and cb are the brace characters.
-    rm_merge_triple() { # $1 = bold face, $2 = italics face
+    # merge two attributed face specs for nested emphasis, e.g.
+    # {+b@Default} + {+i@Default} -> {+bi@Default}; otherwise keep the first
+    rm_merge_face() { # $1, $2 = face specs
       ob=$OB
       cb=$CB
-      bold=${1#$ob}
-      bold=${bold%$cb}
-      italics=${2#$ob}
-      italics=${italics%$cb}
-      case "$bold/$italics" in
-        +*@*/+*@*)
-          bold_attrs=${bold#+}
-          bold_attrs=${bold_attrs%%@*}
-          italic_attrs=${italics#+}
-          italic_attrs=${italic_attrs%%@*}
-          printf '%s' "$ob+$bold_attrs$italic_attrs@${bold#*@}$cb"
+      a=${1#$ob}
+      a=${a%$cb}
+      b=${2#$ob}
+      b=${b%$cb}
+      case "$a/$b" in
+        +*@*/+*@* | +*/+*)
+          attrs=${a#+}
+          rest=${attrs#*@}
+          if [ "$rest" = "$attrs" ]; then rest=; else rest="@$rest"; fi
+          attrs=${attrs%%@*}
+          tail=${b#+}
+          tail=${tail%%@*}
+          while [ -n "$tail" ]; do
+            c=${tail%"${tail#?}"}
+            tail=${tail#?}
+            case "$attrs" in
+              *"$c"*) ;;
+              *) attrs="$attrs$c" ;;
+            esac
+          done
+          printf '%s' "$ob+$attrs$rest$cb"
           ;;
-        +*/+*) printf '%s' "$ob${bold#+}${italics#+}$cb" ;;
         *) printf '%s' "$1" ;;
       esac
     }
@@ -235,7 +224,7 @@ provide-module render-markdown %{
         '_' | '__' | '___')
           rm_is_word "$2" && return 1
           ;;
-        '~~') ;;
+        '~' | '~~') ;;
         *)
           if ! rm_is_word "$3"; then
             rm_is_word "$2" && return 1
@@ -270,23 +259,79 @@ provide-module render-markdown %{
       esac
     }
 
-    # CommonMark emphasis: scan $1 for "*"/"_" delimiter runs, decide which
-    # can open and close from the flanking rules, then pair them.  A run that
-    # can both open and close cannot pair when the two run lengths sum to a
-    # multiple of 3 unless both are (the "rule of 3").  Positions are 0-based
-    # byte offsets.
-    #   RM_EMP_SPANS = "cstart,cend,mask ..." content spans (mask: i=1 b=2 s=4)
+    # block-text face for an emphasis bitmask, built from the face options
+    rm_face_mask() { # $1 = bitmask
+      mask=$1
+      face=
+      if [ $((mask & 2)) -ne 0 ]; then face=$kak_opt_render_markdown_bold; fi
+      if [ $((mask & 1)) -ne 0 ]; then
+        if [ -n "$face" ]; then face=$(rm_merge_face "$face" "$kak_opt_render_markdown_italics")
+        else face=$kak_opt_render_markdown_italics; fi
+      fi
+      if [ $((mask & 4)) -ne 0 ]; then
+        if [ -n "$face" ]; then face=$(rm_merge_face "$face" "$kak_opt_render_markdown_strikethrough")
+        else face=$kak_opt_render_markdown_strikethrough; fi
+      fi
+      printf '%s' "$face"
+    }
+
+    # CommonMark emphasis: scan $1 for "*"/"_" delimiter runs (and "~~"),
+    # decide which can open and close from the flanking rules, then pair them.
+    # A run that can both open and close cannot pair when the two run lengths
+    # sum to a multiple of 3 unless both are (the "rule of 3").  Backslash
+    # escapes are literal and inline code spans are skipped.  Positions are
+    # 0-based byte offsets.
+    #   RM_EMP_SPANS = "mstart,mend,cstart,cend,mask ..." (mask: i=1 b=2 s=4)
     #   RM_EMP_USED  = "p1,p2 ..." delimiter-marker ranges to drop
+    #   rm_code_n, rm_cs/ce/ci* = inline code spans (full range and content)
     rm_emphasis_parse() {
       str=$1
       rm_e_n=0
+      rm_code_n=0
       pos=0
       prev=
       while [ -n "$str" ]; do
         ch=${str%"${str#?}"}
         str=${str#?}
         case "$ch" in
-          '*' | '_')
+          '\')
+            next=${str%"${str#?}"}
+            case "$next" in
+              '*' | '_' | '~' | '`')
+                str=${str#?}
+                pos=$((pos + 2))
+                prev=$next
+                ;;
+              *)
+                pos=$((pos + 1))
+                prev=$ch
+                ;;
+            esac
+            ;;
+          '`')
+            if [ "$prev" != '`' ] && [ "${str%"${str#?}"}" != '`' ]; then
+              case "$str" in
+                *'`'*)
+                  inner=${str%%'`'*}
+                  rest=${str#"$inner"\`}
+                  after=${rest%"${rest#?}"}
+                  if [ -n "$inner" ] && [ "$after" != '`' ]; then
+                    rm_code_n=$((rm_code_n + 1))
+                    eval "rm_cs$rm_code_n=$pos"
+                    eval "rm_ce$rm_code_n=$((pos + ${#inner} + 2))"
+                    eval "rm_ci$rm_code_n=\$inner"
+                    str=$rest
+                    pos=$((pos + ${#inner} + 2))
+                    prev='`'
+                    continue
+                  fi
+                  ;;
+              esac
+            fi
+            pos=$((pos + 1))
+            prev=$ch
+            ;;
+          '*' | '_' | '~')
             len=1
             next=${str%"${str#?}"}
             while [ -n "$str" ] && [ "$next" = "$ch" ]; do
@@ -294,6 +339,11 @@ provide-module render-markdown %{
               len=$((len + 1))
               next=${str%"${str#?}"}
             done
+            if [ "$ch" = '~' ] && [ "$len" -ne 2 ]; then
+              pos=$((pos + len))
+              prev=$ch
+              continue
+            fi
             rm_e_n=$((rm_e_n + 1))
             eval "rm_ec$rm_e_n=\$ch"
             eval "rm_en$rm_e_n=\$len"
@@ -358,8 +408,11 @@ provide-module render-markdown %{
           continue
         fi
         if [ "$on" -ge 2 ] && [ "$cn" -ge 2 ]; then use=2; else use=1; fi
-        if [ "$use" -eq 2 ]; then mask=2; else mask=1; fi
-        RM_EMP_SPANS="$RM_EMP_SPANS $((opos + on)),$cpos,$mask"
+        case "$cch" in
+          '~') mask=4 ;;
+          *) if [ "$use" -eq 2 ]; then mask=2; else mask=1; fi ;;
+        esac
+        RM_EMP_SPANS="$RM_EMP_SPANS $((opos + on - use)),$((cpos + use)),$((opos + on)),$cpos,$mask"
         RM_EMP_USED="$RM_EMP_USED $((opos + on - use)),$((opos + on)) $cpos,$((cpos + use))"
         eval "rm_en$op=$((on - use))"
         eval "rm_ep$cur=$((cpos + use))"
@@ -393,10 +446,12 @@ provide-module render-markdown %{
         i=$((i + 1))
       done
       for span in $RM_EMP_SPANS; do
-        cstart=${span%%,*}
         rest=${span#*,}
+        rest=${rest#*,}
+        cstart=${rest%%,*}
+        rest=${rest#*,}
         cend=${rest%%,*}
-        mask=${rest##*,}
+        mask=${rest#*,}
         i=$cstart
         while [ "$i" -lt "$cend" ]; do
           eval "rm_eattr$i=$((rm_eattr$i | mask))"
@@ -429,6 +484,37 @@ provide-module render-markdown %{
         i=$((i + 1))
       done
       if [ "$attr" -ne 0 ]; then out="$out$base"; fi
+      printf '%s' "$out"
+    }
+
+    # render line bytes [start,end) as block markup: drop used markers and
+    # backticks, emit the union emphasis faces, and render code spans
+    rm_render_block_region() { # $1 = start, $2 = end
+      from=$1
+      to=$2
+      out=
+      attr=0
+      i=$from
+      while [ "$i" -lt "$to" ]; do
+        eval "ce=\$rm_ecode$i"
+        if [ -n "$ce" ]; then
+          eval "inner=\$rm_ecodeinner$i"
+          out="$out$kak_opt_render_markdown_inline_code$inner"
+          if [ "$attr" -ne 0 ]; then out="$out$(rm_face_mask "$attr")"; fi
+          i=$ce
+          continue
+        fi
+        eval "sk=\$rm_eskip$i"
+        if [ "$sk" -eq 0 ]; then
+          eval "a=\$rm_eattr$i"
+          if [ "$a" -ne "$attr" ]; then
+            attr=$a
+            if [ "$attr" -ne 0 ]; then out="$out$(rm_face_mask "$attr")"; fi
+          fi
+          eval "out=\"\$out\$rm_echar$i\""
+        fi
+        i=$((i + 1))
+      done
       printf '%s' "$out"
     }
 
@@ -1032,55 +1118,95 @@ provide-module render-markdown %{
           content=$(printf '%s' "$kak_selection" | sed -e 's/^<//' -e 's/>$//' -e "s/'/''/g")
           rm_emit link "$kak_opt_render_markdown_link_mail" "$content"
           ;;
-        inline-code)
-          rm_emit code "$kak_opt_render_markdown_inline_code" "$(rm_strip_edges "$kak_selection" '`')"
-          ;;
-        strike)
-          rm_emit strike "$kak_opt_render_markdown_strikethrough" "$(rm_strip_edges "$kak_selection" '~')"
-          ;;
         emphasis)
           if rm_consumed; then exit 0; fi
-          # dispatch by first marker char: ~ strike, ` inline code, _/* em
-          start=$(printf '%.1s' "$kak_selection")
-          case "$start" in
-            '~') render_markdown_classify strike ;;
-            '`') render_markdown_classify inline-code ;;
-            '*' | '_')
-              case "$kak_selection" in
-                # longest run first: "__*" also matches "___"
-                ___* | \*\*\**) render_markdown_classify em-triple ;;
-                __* | \*\**) render_markdown_classify em-double ;;
-                *) render_markdown_classify em-single ;;
-              esac
-              ;;
-          esac
-          ;;
-        em-triple)
-          # ***x*** / ___x___ -> bold and italics together
-          face=$(rm_merge_triple "$kak_opt_render_markdown_bold" "$kak_opt_render_markdown_italics")
-          case "$kak_selection" in
-            ___*) content=$(rm_strip_edges "$kak_selection" '_') ;;
-            *) content=$(rm_strip_edges "$kak_selection" '*') ;;
-          esac
-          rm_emit em "$face" "$content"
-          ;;
-        em-double)
-          # **x** / __x__ -> bold face (markdown semantics)
-          face=$kak_opt_render_markdown_bold
-          case "$kak_selection" in
-            __*) content=$(rm_strip_edges "$kak_selection" '_') ;;
-            *) content=$(rm_strip_edges "$kak_selection" '*') ;;
-          esac
-          rm_emit em "$face" "$content"
-          ;;
-        em-single)
-          # *x* / _x_ -> italics face (markdown semantics)
-          face=$kak_opt_render_markdown_italics
-          case "$kak_selection" in
-            _*) content=$(rm_strip_edges "$kak_selection" '_') ;;
-            *) content=$(rm_strip_edges "$kak_selection" '*') ;;
-          esac
-          rm_emit em "$face" "$content"
+          line=$(rm_line)
+          txt=$kak_selection
+          rm_emphasis_parse "$txt"
+          i=0
+          rest=$txt
+          while [ -n "$rest" ]; do
+            ch=${rest%"${rest#?}"}
+            rest=${rest#?}
+            eval "rm_echar$i=\$ch"
+            eval "rm_eattr$i=0; rm_eskip$i=0; rm_ecode$i=; rm_etop$i=; rm_esolo$i="
+            i=$((i + 1))
+          done
+          for span in $RM_EMP_SPANS; do
+            rest=${span#*,}
+            rest=${rest#*,}
+            cstart=${rest%%,*}
+            rest=${rest#*,}
+            cend=${rest%%,*}
+            mask=${rest#*,}
+            i=$cstart
+            while [ "$i" -lt "$cend" ]; do
+              eval "rm_eattr$i=$((rm_eattr$i | mask))"
+              i=$((i + 1))
+            done
+          done
+          for mark in $RM_EMP_USED; do
+            i=${mark%%,*}
+            end=${mark#*,}
+            while [ "$i" -lt "$end" ]; do
+              eval "rm_eskip$i=1"
+              i=$((i + 1))
+            done
+          done
+          ci=1
+          while [ "$ci" -le "$rm_code_n" ]; do
+            eval "cs=\$rm_cs$ci; ce=\$rm_ce$ci; ctext=\$rm_ci$ci"
+            eval "rm_ecode$cs=\$ce; rm_ecodeinner$cs=\$ctext"
+            eval "rm_eskip$cs=1; rm_eskip$((ce - 1))=1"
+            ci=$((ci + 1))
+          done
+          for span in $RM_EMP_SPANS; do
+            mstart=${span%%,*}
+            r=${span#*,}
+            mend=${r%%,*}
+            top=1
+            for other in $RM_EMP_SPANS; do
+              [ "$other" = "$span" ] && continue
+              omstart=${other%%,*}
+              or=${other#*,}
+              omend=${or%%,*}
+              if [ "$omstart" -le "$mstart" ] && [ "$omend" -ge "$mend" ] &&
+                { [ "$omstart" -lt "$mstart" ] || [ "$omend" -gt "$mend" ]; }; then
+                top=0
+                break
+              fi
+            done
+            if [ "$top" -eq 1 ]; then eval "rm_etop$mstart=$mend"; fi
+          done
+          ci=1
+          while [ "$ci" -le "$rm_code_n" ]; do
+            eval "cs=\$rm_cs$ci; ce=\$rm_ce$ci"
+            inside=0
+            for span in $RM_EMP_SPANS; do
+              mstart=${span%%,*}
+              r=${span#*,}
+              mend=${r%%,*}
+              if [ "$cs" -ge "$mstart" ] && [ "$ce" -le "$mend" ]; then
+                inside=1
+                break
+              fi
+            done
+            if [ "$inside" -eq 0 ]; then eval "rm_esolo$cs=$ce"; fi
+            ci=$((ci + 1))
+          done
+          i=0
+          while [ "$i" -lt "${#txt}" ]; do
+            eval "te=\$rm_etop$i"
+            if [ -n "$te" ]; then
+              rm_emit_desc "$line.$((i + 1)),$line.$te" '' "$(rm_render_block_region "$i" "$te")"
+            fi
+            eval "se=\$rm_esolo$i"
+            if [ -n "$se" ]; then
+              eval "ctext=\$rm_ecodeinner$i"
+              rm_emit_desc "$line.$((i + 1)),$line.$se" '' "$kak_opt_render_markdown_inline_code$ctext"
+            fi
+            i=$((i + 1))
+          done
           ;;
       esac
     }
@@ -1294,17 +1420,14 @@ provide-module render-markdown %{
     }
   }
 
-  # emphasis family: one scan matches code, strikethrough, bold and italics,
-  # which avoids overlap problems between separate matchers; the library's
-  # emphasis dispatcher decides the kind of each match.  Runs follow
-  # CommonMark's flanking rules: intraword "*" and "~~" emphasize, intraword
-  # "_" does not.  [^\W_] is a word character except underscore, which
-  # CommonMark counts as punctuation.
+  # inline spans: each line is parsed by the shell library, which pairs "*",
+  # "_" and "~~" runs with CommonMark's flanking rules and rule of 3 and
+  # renders inline code.  Links are handled by their own matcher.
   define-command -hidden _render-markdown-match-emphasis %{
     evaluate-commands -draft %{
       _render-markdown-select
       try %{
-        execute-keys "s(?<lt>!\\)(?:(?<lt>![`])`[^`\n]+`(?![`])|~~(?=\S)[^~\n]+(?<lt>=\S)~~|(?<lt>!\*)(?:(?=\*\*\*\S)(?:(?=\*\*\*[^\W_])|(?<lt>![^\W_]))\*\*\*[^*\n]+(?<lt>=\S)(?:\*\*\*(?![^\W_])|(?<lt>=[^\W_])\*\*\*)|(?=\*\*\S)(?:(?=\*\*[^\W_])|(?<lt>![^\W_]))\*\*[^*\n]+(?<lt>=\S)(?:\*\*(?![^\W_])|(?<lt>=[^\W_])\*\*)|(?=\*\S)(?:(?=\*[^\W_])|(?<lt>![^\W_]))\*[^*\n]+(?<lt>=\S)(?:\*(?![^\W_])|(?<lt>=[^\W_])\*))(?!\*)|(?<lt>!_)(?<lt>![^\W_])(?:___(?=\S)(?:[^_\n]|(?<lt>=[^\W_])_+(?=[^\W_]))+(?<lt>=\S)___|__(?=\S)(?:[^_\n]|(?<lt>=[^\W_])_+(?=[^\W_]))+(?<lt>=\S)__|_(?=\S)(?:[^_\n]|(?<lt>=[^\W_])_+(?=[^\W_]))+(?<lt>=\S)_)(?![^\W_])(?!_))<ret>"
+        execute-keys "s^[^\n]+$<ret>"
         _render-markdown-handle emphasis
       }
     }

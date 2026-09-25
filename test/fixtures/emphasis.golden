@@ -10,6 +10,8 @@
 7.30,7.37|{+b@Default}bold
 7.39,7.46|{+b@Default}bold
 7.48,7.53|{cyan,rgb:3e3e3e+f}code
+8.38,8.46|{+i@Default}escaped
+8.51,8.59|{+i@Default}escaped
 9.2,9.9|{+b@Default}bold
 10.2,10.9|{+b@Default}bold
 11.2,11.9|{+i@Default}italic

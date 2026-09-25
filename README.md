@@ -56,11 +56,10 @@ Currently the plugin supports rendering
 
 Emphasis follows CommonMark: `*` may emphasize inside a word (`a*b*c`) but
 `_` never does (`a_b_c` stays literal), and delimiter runs are paired with
-the flanking rules and the rule of 3. Headings and table cells use the full
-delimiter-run algorithm, so mismatched runs (`___x_`) and nested or
-rule-of-3 spans (`*foo**bar*`, `**bold *it* bold**`) render as the spec
-says; plain paragraphs still use the simpler block matcher (see Known
-Issues).
+the flanking rules and the rule of 3. Mismatched runs (`___x_`), nested and
+rule-of-3 spans (`*foo**bar*`, `**bold *it* bold**`) and inline code inside
+emphasis all render as the spec says, in paragraphs as well as headings and
+table cells.
 
 ## Customisation
 
@@ -139,10 +138,8 @@ intended.
   matched
 - Table cell inline rendering pads with trailing spaces, so cell text that
   contains emphasis is left-aligned rather than preserving interior spacing
-- Emphasis in plain paragraphs is matched span by span rather than with
-  CommonMark's full delimiter stack, so nested spans (`*a **b** c*`),
-  mismatched runs (`___x_`) and rule-of-3 cases (`*foo**bar*`) are only
-  partly rendered there; headings and table cells are spec-compliant
+- Links are matched separately from emphasis, so emphasis inside or around a
+  link (`[a *b* c](url)`, `*[a](url)*`) emits overlapping ranges
 
 ## Reference
 - https://github.com/MeanderingProgrammer/render-markdown.nvim

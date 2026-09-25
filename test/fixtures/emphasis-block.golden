@@ -1,0 +1,7 @@
+1.1,1.10|{+i@Default}foo**bar
+3.1,3.11|{+b@Default}foo*bar
+5.1,5.22|{+b@Default}bold {+bi@Default}nested{+b@Default} bold
+7.1,7.12|{+i@Default}a {cyan,rgb:3e3e3e+f}code{+i@Default} c
+9.1,9.11|{+s@Default}a {+is@Default}b{+s@Default} c
+11.1,11.15|{+bi@Default}x{+b@Default} and {+bi@Default}x
+13.1,13.9|{+i@Default}a__b__c
