@@ -427,6 +427,20 @@ provide-module render-markdown %{
       done
     }
 
+    # split a span record "mstart,mend,cstart,cend,mask" from RM_EMP_SPANS
+    # into the globals of the same names
+    rm_span_split() {
+      s=$1
+      mstart=${s%%,*}
+      s=${s#*,}
+      mend=${s%%,*}
+      s=${s#*,}
+      cstart=${s%%,*}
+      s=${s#*,}
+      cend=${s%%,*}
+      mask=${s#*,}
+    }
+
     # from rm_emphasis_parse's spans, fill the per-byte emphasis attribute
     # (rm_eattr*) and dropped-marker (rm_eskip*) arrays for text $1
     rm_emphasis_attrs() {
@@ -437,12 +451,7 @@ provide-module render-markdown %{
         i=$((i + 1))
       done
       for span in $RM_EMP_SPANS; do
-        rest=${span#*,}
-        rest=${rest#*,}
-        cstart=${rest%%,*}
-        rest=${rest#*,}
-        cend=${rest%%,*}
-        mask=${rest#*,}
+        rm_span_split "$span"
         i=$cstart
         while [ "$i" -lt "$cend" ]; do
           eval "rm_eattr$i=$((rm_eattr$i | mask))"
@@ -1137,22 +1146,20 @@ provide-module render-markdown %{
           done
           # one range per top-level span: nested spans render inside a parent
           for span in $RM_EMP_SPANS; do
-            mstart=${span%%,*}
-            r=${span#*,}
-            mend=${r%%,*}
+            rm_span_split "$span"
+            span_start=$mstart
+            span_end=$mend
             top=1
             for other in $RM_EMP_SPANS; do
               [ "$other" = "$span" ] && continue
-              omstart=${other%%,*}
-              or=${other#*,}
-              omend=${or%%,*}
-              if [ "$omstart" -le "$mstart" ] && [ "$omend" -ge "$mend" ] &&
-                { [ "$omstart" -lt "$mstart" ] || [ "$omend" -gt "$mend" ]; }; then
+              rm_span_split "$other"
+              if [ "$mstart" -le "$span_start" ] && [ "$mend" -ge "$span_end" ] &&
+                { [ "$mstart" -lt "$span_start" ] || [ "$mend" -gt "$span_end" ]; }; then
                 top=0
                 break
               fi
             done
-            if [ "$top" -eq 1 ]; then eval "rm_etop$mstart=$mend"; fi
+            if [ "$top" -eq 1 ]; then eval "rm_etop$span_start=$span_end"; fi
           done
           # code spans drop their backticks and, outside every span, get
           # their own range
@@ -1163,9 +1170,7 @@ provide-module render-markdown %{
             eval "rm_eskip$cs=1; rm_eskip$((ce - 1))=1"
             inside=0
             for span in $RM_EMP_SPANS; do
-              mstart=${span%%,*}
-              r=${span#*,}
-              mend=${r%%,*}
+              rm_span_split "$span"
               if [ "$cs" -ge "$mstart" ] && [ "$ce" -le "$mend" ]; then
                 inside=1
                 break
