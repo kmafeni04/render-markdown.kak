@@ -14,5 +14,12 @@
 10.2,10.9|{+b@Default}bold
 11.2,11.9|{+i@Default}italic
 12.2,12.9|{+i@Default}italic
+14.7,14.11|{+i@Default}not
+16.7,16.13|{+b@Default}not
 17.1,17.17|{+bi@Default}bold italic
 18.1,18.17|{+bi@Default}bold italic
+19.2,19.4|{+i@Default}b
+21.1,21.9|{+i@Default}foo_bar
+22.1,22.6|{+i@Default}a__b
+23.4,23.6|{+i@Default}b
+24.6,24.10|{+i@Default}bar

@@ -311,6 +311,20 @@ check 'heading triple marker merges bold and italics' '{H+bi}x{H}' "$(rm_inline 
 check 'heading underscore triple marker' '{H+bi}x{H}' "$(rm_inline '___x___' '{H}')"
 check 'heading nested emphasis' '{H+b}bold {H+bi}it{H+b} bold{H}' \
   "$(rm_inline '**bold *it* bold**' '{H}')"
+check 'heading intraword underscore stays literal' 'a_b_c' \
+  "$(rm_inline 'a_b_c' '{H}')"
+check 'heading intraword asterisk emphasizes' 'a{H+i}b{H}c' \
+  "$(rm_inline 'a*b*c' '{H}')"
+check 'heading intraword strike emphasizes' 'a{H+s}b{H}c' \
+  "$(rm_inline 'a~~b~~c' '{H}')"
+check 'heading underscore span skips intraword run' '{H+i}foo_bar{H}' \
+  "$(rm_inline '_foo_bar_' '{H}')"
+check 'heading underscore span keeps bold run' '{H+i}a__b{H}' \
+  "$(rm_inline '_a__b_' '{H}')"
+check 'heading opener before space cannot close there' '*a {H+i}b{H}' \
+  "$(rm_inline '*a *b*' '{H}')"
+check 'heading emphasis after punctuation' 'foo.{H+i}bar{H}.' \
+  "$(rm_inline 'foo.*bar*.' '{H}')"
 
 export kak_opt_render_markdown_table_separator='{S}'
 export kak_opt_render_markdown_table_pipe='{P}'

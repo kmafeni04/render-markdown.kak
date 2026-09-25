@@ -123,6 +123,19 @@ provide-module render-markdown %{
       printf '%s' "$out"
     }
 
+    # drop the leading and trailing runs of $2 from $1 (emphasis markers),
+    # keeping any occurrence inside the content (an intraword "_" is content)
+    rm_strip_edges() {
+      s=$1
+      while [ -n "$s" ] && [ "$(rm_first_char "$s")" = "$2" ]; do
+        s=${s#?}
+      done
+      while [ -n "$s" ] && [ "$(rm_last_char "$s")" = "$2" ]; do
+        s=${s%?}
+      done
+      printf '%s' "$s"
+    }
+
     rm_escape() {
       s=$1
       out=
@@ -184,14 +197,15 @@ provide-module render-markdown %{
       esac
     }
 
-    # earliest span delimiter in $s, or empty
+    # earliest span delimiter in $1, or empty
     rm_next_delim() {
-      best=${#s} # no delimiter starts at or past the end of $s
+      str=$1
+      best=${#str} # no delimiter starts at or past the end of $str
       found=
       for tok in '`' '***' '**' '___' '__' '~~' '![' '[' '_' '*'; do
-        case "$s" in
+        case "$str" in
           *"$tok"*)
-            front=${s%%"$tok"*}
+            front=${str%%"$tok"*}
             pos=${#front}
             if [ "$pos" -lt "$best" ]; then
               best=$pos
@@ -203,19 +217,93 @@ provide-module render-markdown %{
       printf '%s' "$found"
     }
 
+    # character helpers for CommonMark emphasis flanking.  "word" excludes
+    # underscore, which CommonMark treats as punctuation, so it is [^\W_]
+    # spelled out with the POSIX class for a single character.
+    rm_first_char() { printf '%s' "${1%"${1#?}"}"; }
+    rm_last_char() { printf '%s' "${1#"${1%?}"}"; }
+    rm_is_word() {
+      case "$1" in
+        [[:alnum:]]) return 0 ;;
+        *) return 1 ;;
+      esac
+    }
+    # empty (line edge) counts as whitespace, like CommonMark's flanking
+    rm_is_space() {
+      case "$1" in
+        '' | [[:space:]]) return 0 ;;
+        *) return 1 ;;
+      esac
+    }
+    # left-flanking: next is non-space, and either next is not punctuation or
+    # previous is whitespace/punctuation (or a line edge).
+    rm_left_flanking() { # $1 = previous char, $2 = next char
+      rm_is_space "$2" && return 1
+      if ! rm_is_word "$2"; then
+        rm_is_word "$1" && return 1
+      fi
+      return 0
+    }
+    # right-flanking: previous is non-space, and either previous is not
+    # punctuation or next is whitespace/punctuation (or a line edge).
+    rm_right_flanking() { # $1 = previous char, $2 = next char
+      rm_is_space "$1" && return 1
+      if ! rm_is_word "$1"; then
+        rm_is_word "$2" && return 1
+      fi
+      return 0
+    }
+    # can a delimiter run open/close, given the characters around it?  "_"
+    # additionally never opens after or closes before a word character.
+    rm_can_open() { # $1 = delimiter, $2 = before, $3 = after
+      case "$1" in
+        '_' | '__' | '___')
+          rm_is_word "$2" && return 1
+          rm_is_space "$3" && return 1
+          ;;
+        '~~')
+          rm_is_space "$3" && return 1
+          ;;
+        *)
+          rm_left_flanking "$2" "$3" || return 1
+          ;;
+      esac
+      return 0
+    }
+    rm_can_close() { # $1 = delimiter, $2 = before, $3 = after
+      case "$1" in
+        '_' | '__' | '___')
+          rm_is_word "$3" && return 1
+          rm_is_space "$2" && return 1
+          ;;
+        '~~')
+          rm_is_space "$2" && return 1
+          ;;
+        *)
+          rm_right_flanking "$2" "$3" || return 1
+          ;;
+      esac
+      return 0
+    }
+
     # render inline markdown spans in heading content as face markup: a span
     # adds its attribute to the inherited base face and resets to it, so the
     # whole heading keeps one color (links/code keep their faces).  Spans are
     # rendered recursively, so nested emphasis and triple markers work; code
-    # and link labels stay literal.
+    # and link labels stay literal.  Emphasis runs honour CommonMark's
+    # left/right-flanking rules (in particular, "_" never emphasizes inside a
+    # word, while "*" does).
     rm_inline() {
       s=$1
       base=$2
       inside=${base#?}
       inside=${inside%?}
       out=
+      # source character immediately before the current position (line start
+      # is empty), needed for the flanking checks
+      prev=
       while [ -n "$s" ]; do
-        d=$(rm_next_delim)
+        d=$(rm_next_delim "$s")
         if [ -z "$d" ]; then
           out="$out$s"
           break
@@ -224,6 +312,9 @@ provide-module render-markdown %{
         out="$out$front"
         s=${s#"$front"}
         s=${s#"$d"}
+        if [ -n "$front" ]; then
+          prev=$(rm_last_char "$front")
+        fi
         case "$d" in
           '`')
             case "$s" in
@@ -231,6 +322,7 @@ provide-module render-markdown %{
                 inner=${s%%\`*}
                 out="$out$kak_opt_render_markdown_inline_code$inner$base"
                 s=${s#*"$inner"\`}
+                prev='`'
                 ;;
               *)
                 out="$out\`$s"
@@ -245,23 +337,59 @@ provide-module render-markdown %{
               '~~') attr=s ;;
               '*' | '_') attr=i ;;
             esac
-            case "$s" in
-              *"$d"*)
-                inner=${s%%"$d"*}
-                # merge the attribute into the base's attribute token:
-                # {blue+f} + b -> {blue+fb}, {blue} + b -> {blue+b}
-                case "$inside" in
-                  *+*) span="{${inside%+*}+${inside##*+}$attr}" ;;
-                  *) span="{${inside}+$attr}" ;;
-                esac
-                out="$out$span$(rm_inline "$inner" "$span")$base"
-                s=${s#*"$inner""$d"}
-                ;;
-              *)
-                out="$out$d$s"
-                s=
-                ;;
+            # a run that cannot open is literal, so a later run can open
+            q=$(rm_first_char "$s")
+            if ! rm_can_open "$d" "$prev" "$q"; then
+              out="$out$d"
+              prev=$(rm_last_char "$d")
+              continue
+            fi
+            # find the matching closer.  Delimiters are re-tokenized so runs
+            # match the opener ("**" is one token, not two "*"), and a run
+            # that can neither close nor open (e.g. an intraword "_") is part
+            # of the content.  A run that could open instead must pair with an
+            # inner span, which leaves this one literal.
+            inner=
+            rest=
+            found=0
+            scan=$s
+            while [ -n "$scan" ]; do
+              tok=$(rm_next_delim "$scan")
+              if [ -z "$tok" ]; then
+                break
+              fi
+              head=${scan%%"$tok"*}
+              tail=${scan#*"$head""$tok"}
+              if [ "$tok" = "$d" ] && [ -n "$head" ]; then
+                cp=$(rm_last_char "$head")
+                cq=$(rm_first_char "$tail")
+                if rm_can_close "$d" "$cp" "$cq"; then
+                  inner="$inner$head"
+                  rest=$tail
+                  found=1
+                  break
+                fi
+                if rm_can_open "$d" "$cp" "$cq"; then
+                  break
+                fi
+              fi
+              inner="$inner$head$tok"
+              scan=$tail
+            done
+            if [ "$found" -eq 0 ]; then
+              out="$out$d"
+              prev=$(rm_last_char "$d")
+              continue
+            fi
+            # merge the attribute into the base's attribute token:
+            # {blue+f} + b -> {blue+fb}, {blue} + b -> {blue+b}
+            case "$inside" in
+              *+*) span="{${inside%+*}+${inside##*+}$attr}" ;;
+              *) span="{${inside}+$attr}" ;;
             esac
+            out="$out$span$(rm_inline "$inner" "$span")$base"
+            s=$rest
+            prev=$(rm_last_char "$d")
             ;;
           '![')
             case "$s" in
@@ -274,6 +402,10 @@ provide-module render-markdown %{
                   \(*\)*)
                     s=${s#\(}
                     s=${s#*\)}
+                    prev=')'
+                    ;;
+                  *)
+                    prev=']'
                     ;;
                 esac
                 ;;
@@ -293,6 +425,7 @@ provide-module render-markdown %{
                       *) out="$out$kak_opt_render_markdown_link_link$label$base" ;;
                     esac
                     s=${rest#\("$url"\)}
+                    prev=')'
                     ;;
                   *)
                     out="$out[$label$rest"
@@ -775,8 +908,8 @@ provide-module render-markdown %{
           # ***x*** / ___x___ -> bold and italics together
           face=$(rm_merge_triple "$kak_opt_render_markdown_bold" "$kak_opt_render_markdown_italics")
           case "$kak_selection" in
-            ___*) content=$(rm_strip "$kak_selection" '_') ;;
-            *) content=$(rm_strip "$kak_selection" '*') ;;
+            ___*) content=$(rm_strip_edges "$kak_selection" '_') ;;
+            *) content=$(rm_strip_edges "$kak_selection" '*') ;;
           esac
           rm_emit em "$face" "$content"
           ;;
@@ -784,8 +917,8 @@ provide-module render-markdown %{
           # **x** / __x__ -> bold face (markdown semantics)
           face=$kak_opt_render_markdown_bold
           case "$kak_selection" in
-            __*) content=$(rm_strip "$kak_selection" '_') ;;
-            *) content=$(rm_strip "$kak_selection" '*') ;;
+            __*) content=$(rm_strip_edges "$kak_selection" '_') ;;
+            *) content=$(rm_strip_edges "$kak_selection" '*') ;;
           esac
           rm_emit em "$face" "$content"
           ;;
@@ -793,8 +926,8 @@ provide-module render-markdown %{
           # *x* / _x_ -> italics face (markdown semantics)
           face=$kak_opt_render_markdown_italics
           case "$kak_selection" in
-            _*) content=$(rm_strip "$kak_selection" '_') ;;
-            *) content=$(rm_strip "$kak_selection" '*') ;;
+            _*) content=$(rm_strip_edges "$kak_selection" '_') ;;
+            *) content=$(rm_strip_edges "$kak_selection" '*') ;;
           esac
           rm_emit em "$face" "$content"
           ;;
@@ -1012,12 +1145,16 @@ provide-module render-markdown %{
 
   # emphasis family: one scan matches code, strikethrough, bold and italics,
   # which avoids overlap problems between separate matchers; the library's
-  # emphasis dispatcher decides the kind of each match
+  # emphasis dispatcher decides the kind of each match.  Delimiter runs use
+  # CommonMark's left/right-flanking rules: "_" cannot open after or close
+  # before a word character, while "*" and "~~" can, so intraword emphasis
+  # works for those but not for underscores.  [^\W_] is a word character
+  # except underscore (CommonMark counts "_" as punctuation).
   define-command -hidden _render-markdown-match-emphasis %{
     evaluate-commands -draft %{
       _render-markdown-select
       try %{
-        execute-keys "s(?<lt>!\w)(?<lt>!\\)(?:`[^`\n]+`|~~[^~\n]+~~|(?<lt>!\*)(?:\*\*\*[^*\n]+\*\*\*|\*\*[^*\n]+\*\*|\*[^*\n]+\*)(?!\*)|(?<lt>!_)(?:___[^_\n]+___|__[^_\n]+__|_[^_\n]+_)(?!_))(?!\w)<ret>"
+        execute-keys "s(?<lt>!\\)(?:(?<lt>![`])`[^`\n]+`(?![`])|~~(?=\S)[^~\n]+(?<lt>=\S)~~|(?<lt>!\*)(?=\*\*\*\S)(?:(?=\*\*\*[^\W_])|(?<lt>![^\W_]))\*\*\*[^*\n]+(?<lt>=\S)(?:\*\*\*(?![^\W_])|(?<lt>=[^\W_])\*\*\*)(?!\*)|(?<lt>!\*)(?=\*\*\S)(?:(?=\*\*[^\W_])|(?<lt>![^\W_]))\*\*[^*\n]+(?<lt>=\S)(?:\*\*(?![^\W_])|(?<lt>=[^\W_])\*\*)(?!\*)|(?<lt>!\*)(?=\*\S)(?:(?=\*[^\W_])|(?<lt>![^\W_]))\*[^*\n]+(?<lt>=\S)(?:\*(?![^\W_])|(?<lt>=[^\W_])\*)(?!\*)|(?<lt>!_)(?<lt>![^\W_])___(?=\S)(?:[^_\n]|(?<lt>=[^\W_])_+(?=[^\W_]))+(?<lt>=\S)___(?![^\W_])(?!_)|(?<lt>!_)(?<lt>![^\W_])__(?=\S)(?:[^_\n]|(?<lt>=[^\W_])_+(?=[^\W_]))+(?<lt>=\S)__(?![^\W_])(?!_)|(?<lt>!_)(?<lt>![^\W_])_(?=\S)(?:[^_\n]|(?<lt>=[^\W_])_+(?=[^\W_]))+(?<lt>=\S)_(?![^\W_])(?!_))<ret>"
         _render-markdown-handle emphasis
       }
     }
