@@ -123,15 +123,21 @@ provide-module render-markdown %{
       printf '%s' "$out"
     }
 
-    # drop the leading and trailing runs of $2 from $1 (emphasis markers),
+    # drop leading and trailing runs of $2 (emphasis markers) from $1,
     # keeping any occurrence inside the content (an intraword "_" is content)
     rm_strip_edges() {
       s=$1
-      while [ -n "$s" ] && [ "$(rm_first_char "$s")" = "$2" ]; do
-        s=${s#?}
+      while :; do
+        case "$s" in
+          "$2"*) s=${s#?} ;;
+          *) break ;;
+        esac
       done
-      while [ -n "$s" ] && [ "$(rm_last_char "$s")" = "$2" ]; do
-        s=${s%?}
+      while :; do
+        case "$s" in
+          *"$2") s=${s%?} ;;
+          *) break ;;
+        esac
       done
       printf '%s' "$s"
     }
@@ -217,9 +223,8 @@ provide-module render-markdown %{
       printf '%s' "$found"
     }
 
-    # character helpers for CommonMark emphasis flanking.  "word" excludes
-    # underscore, which CommonMark treats as punctuation, so it is [^\W_]
-    # spelled out with the POSIX class for a single character.
+    # character helpers for the inline renderer.  "word" excludes underscore
+    # (CommonMark counts it as punctuation), so it is the alnum class, not \w.
     rm_first_char() { printf '%s' "${1%"${1#?}"}"; }
     rm_last_char() { printf '%s' "${1#"${1%?}"}"; }
     rm_is_word() {
@@ -235,64 +240,34 @@ provide-module render-markdown %{
         *) return 1 ;;
       esac
     }
-    # left-flanking: next is non-space, and either next is not punctuation or
-    # previous is whitespace/punctuation (or a line edge).
-    rm_left_flanking() { # $1 = previous char, $2 = next char
-      rm_is_space "$2" && return 1
-      if ! rm_is_word "$2"; then
-        rm_is_word "$1" && return 1
-      fi
-      return 0
-    }
-    # right-flanking: previous is non-space, and either previous is not
-    # punctuation or next is whitespace/punctuation (or a line edge).
-    rm_right_flanking() { # $1 = previous char, $2 = next char
-      rm_is_space "$1" && return 1
-      if ! rm_is_word "$1"; then
-        rm_is_word "$2" && return 1
-      fi
-      return 0
-    }
-    # can a delimiter run open/close, given the characters around it?  "_"
-    # additionally never opens after or closes before a word character.
-    rm_can_open() { # $1 = delimiter, $2 = before, $3 = after
+    # can a delimiter run open?  $1 = delimiter, $2 = char before, $3 = char
+    # after.  All runs need a non-space after; "*" additionally needs the
+    # left-flanking rule (not punctuation after unless preceded by
+    # space/punctuation) and "_" must not follow a word character.
+    rm_can_open() {
+      rm_is_space "$3" && return 1
       case "$1" in
         '_' | '__' | '___')
           rm_is_word "$2" && return 1
-          rm_is_space "$3" && return 1
           ;;
-        '~~')
-          rm_is_space "$3" && return 1
-          ;;
+        '~~') ;;
         *)
-          rm_left_flanking "$2" "$3" || return 1
+          if ! rm_is_word "$3"; then
+            rm_is_word "$2" && return 1
+          fi
           ;;
       esac
       return 0
     }
-    rm_can_close() { # $1 = delimiter, $2 = before, $3 = after
-      case "$1" in
-        '_' | '__' | '___')
-          rm_is_word "$3" && return 1
-          rm_is_space "$2" && return 1
-          ;;
-        '~~')
-          rm_is_space "$2" && return 1
-          ;;
-        *)
-          rm_right_flanking "$2" "$3" || return 1
-          ;;
-      esac
-      return 0
-    }
+    # closing is the mirror of opening: swap the two sides
+    rm_can_close() { rm_can_open "$1" "$3" "$2"; }
 
     # render inline markdown spans in heading content as face markup: a span
     # adds its attribute to the inherited base face and resets to it, so the
     # whole heading keeps one color (links/code keep their faces).  Spans are
     # rendered recursively, so nested emphasis and triple markers work; code
-    # and link labels stay literal.  Emphasis runs honour CommonMark's
-    # left/right-flanking rules (in particular, "_" never emphasizes inside a
-    # word, while "*" does).
+    # and link labels stay literal.  Emphasis runs follow CommonMark's
+    # left/right-flanking rules ("_" never emphasizes inside a word).
     rm_inline() {
       s=$1
       base=$2
@@ -344,13 +319,11 @@ provide-module render-markdown %{
               prev=$(rm_last_char "$d")
               continue
             fi
-            # find the matching closer.  Delimiters are re-tokenized so runs
-            # match the opener ("**" is one token, not two "*"), and a run
-            # that can neither close nor open (e.g. an intraword "_") is part
-            # of the content.  A run that could open instead must pair with an
-            # inner span, which leaves this one literal.
+            # find the closer, re-tokenizing so runs match the opener ("**"
+            # is one token).  A run that can neither close nor open (an
+            # intraword "_") is content; one that could open pairs with an
+            # inner span, leaving this run literal.
             inner=
-            rest=
             found=0
             scan=$s
             while [ -n "$scan" ]; do
@@ -1145,16 +1118,15 @@ provide-module render-markdown %{
 
   # emphasis family: one scan matches code, strikethrough, bold and italics,
   # which avoids overlap problems between separate matchers; the library's
-  # emphasis dispatcher decides the kind of each match.  Delimiter runs use
-  # CommonMark's left/right-flanking rules: "_" cannot open after or close
-  # before a word character, while "*" and "~~" can, so intraword emphasis
-  # works for those but not for underscores.  [^\W_] is a word character
-  # except underscore (CommonMark counts "_" as punctuation).
+  # emphasis dispatcher decides the kind of each match.  Runs follow
+  # CommonMark's flanking rules: intraword "*" and "~~" emphasize, intraword
+  # "_" does not.  [^\W_] is a word character except underscore, which
+  # CommonMark counts as punctuation.
   define-command -hidden _render-markdown-match-emphasis %{
     evaluate-commands -draft %{
       _render-markdown-select
       try %{
-        execute-keys "s(?<lt>!\\)(?:(?<lt>![`])`[^`\n]+`(?![`])|~~(?=\S)[^~\n]+(?<lt>=\S)~~|(?<lt>!\*)(?=\*\*\*\S)(?:(?=\*\*\*[^\W_])|(?<lt>![^\W_]))\*\*\*[^*\n]+(?<lt>=\S)(?:\*\*\*(?![^\W_])|(?<lt>=[^\W_])\*\*\*)(?!\*)|(?<lt>!\*)(?=\*\*\S)(?:(?=\*\*[^\W_])|(?<lt>![^\W_]))\*\*[^*\n]+(?<lt>=\S)(?:\*\*(?![^\W_])|(?<lt>=[^\W_])\*\*)(?!\*)|(?<lt>!\*)(?=\*\S)(?:(?=\*[^\W_])|(?<lt>![^\W_]))\*[^*\n]+(?<lt>=\S)(?:\*(?![^\W_])|(?<lt>=[^\W_])\*)(?!\*)|(?<lt>!_)(?<lt>![^\W_])___(?=\S)(?:[^_\n]|(?<lt>=[^\W_])_+(?=[^\W_]))+(?<lt>=\S)___(?![^\W_])(?!_)|(?<lt>!_)(?<lt>![^\W_])__(?=\S)(?:[^_\n]|(?<lt>=[^\W_])_+(?=[^\W_]))+(?<lt>=\S)__(?![^\W_])(?!_)|(?<lt>!_)(?<lt>![^\W_])_(?=\S)(?:[^_\n]|(?<lt>=[^\W_])_+(?=[^\W_]))+(?<lt>=\S)_(?![^\W_])(?!_))<ret>"
+        execute-keys "s(?<lt>!\\)(?:(?<lt>![`])`[^`\n]+`(?![`])|~~(?=\S)[^~\n]+(?<lt>=\S)~~|(?<lt>!\*)(?:(?=\*\*\*\S)(?:(?=\*\*\*[^\W_])|(?<lt>![^\W_]))\*\*\*[^*\n]+(?<lt>=\S)(?:\*\*\*(?![^\W_])|(?<lt>=[^\W_])\*\*\*)|(?=\*\*\S)(?:(?=\*\*[^\W_])|(?<lt>![^\W_]))\*\*[^*\n]+(?<lt>=\S)(?:\*\*(?![^\W_])|(?<lt>=[^\W_])\*\*)|(?=\*\S)(?:(?=\*[^\W_])|(?<lt>![^\W_]))\*[^*\n]+(?<lt>=\S)(?:\*(?![^\W_])|(?<lt>=[^\W_])\*))(?!\*)|(?<lt>!_)(?<lt>![^\W_])(?:___(?=\S)(?:[^_\n]|(?<lt>=[^\W_])_+(?=[^\W_]))+(?<lt>=\S)___|__(?=\S)(?:[^_\n]|(?<lt>=[^\W_])_+(?=[^\W_]))+(?<lt>=\S)__|_(?=\S)(?:[^_\n]|(?<lt>=[^\W_])_+(?=[^\W_]))+(?<lt>=\S)_)(?![^\W_])(?!_))<ret>"
         _render-markdown-handle emphasis
       }
     }
