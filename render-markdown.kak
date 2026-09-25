@@ -186,14 +186,14 @@ provide-module render-markdown %{
 
     # earliest span delimiter in $s, or empty
     rm_next_delim() {
-      best=9999
+      best=
       found=
       for tok in '`' '***' '**' '___' '__' '~~' '![' '[' '_' '*'; do
         case "$s" in
           *"$tok"*)
             front=${s%%"$tok"*}
             pos=${#front}
-            if [ "$pos" -lt "$best" ]; then
+            if [ -z "$best" ] || [ "$pos" -lt "$best" ]; then
               best=$pos
               found=$tok
             fi
