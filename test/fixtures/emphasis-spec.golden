@@ -1,0 +1,11 @@
+1.1,1.22|{blue+f}󰲡 __{blue+fi}x{blue+f} and {blue+fi}foo**bar{blue+f}
+3.1,3.24|{blue+f}󰲡 {blue+fb}bold {blue+fbi}nested{blue+fb} bold{blue+f}
+5.1+1|{rgb:3e3e3e+f}│
+5.5+1|{rgb:3e3e3e+f}│
+5.9+1|{rgb:3e3e3e+f}│
+6.1,6.9|{rgb:3e3e3e+f}├───┼───┤
+7.1+1|{rgb:3e3e3e+f}│
+7.9+1|{rgb:3e3e3e+f}│
+7.22+1|{rgb:3e3e3e+f}│
+7.2,7.8| __{+i}x{}   
+7.10,7.21| {+i}foo**bar{}   

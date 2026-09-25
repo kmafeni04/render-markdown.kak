@@ -54,10 +54,13 @@ Currently the plugin supports rendering
 - Tables (box-drawing grid; see Table commands)
 - A leading YAML front matter block (hidden; a non-spec heuristic)
 
-Emphasis follows CommonMark's left/right-flanking rules: `*` may emphasize
-inside a word (`a*b*c`) but `_` never does (`a_b_c` stays literal), and a run
-that cannot open or close is treated as content (`_foo_bar_` is one italic
-span, not an opener followed by an intraword `_`).
+Emphasis follows CommonMark: `*` may emphasize inside a word (`a*b*c`) but
+`_` never does (`a_b_c` stays literal), and delimiter runs are paired with
+the flanking rules and the rule of 3. Headings and table cells use the full
+delimiter-run algorithm, so mismatched runs (`___x_`) and nested or
+rule-of-3 spans (`*foo**bar*`, `**bold *it* bold**`) render as the spec
+says; plain paragraphs still use the simpler block matcher (see Known
+Issues).
 
 ## Customisation
 
@@ -136,10 +139,10 @@ intended.
   matched
 - Table cell inline rendering pads with trailing spaces, so cell text that
   contains emphasis is left-aligned rather than preserving interior spacing
-- Emphasis is matched span by span rather than with CommonMark's full
-  delimiter stack, so nested spans (`*a **b** c*`) and adjacent delimiter runs
-  (`*foo**bar*`) are only partly rendered; plain text uses the block matcher,
-  which is more limited than the heading/table inline renderer
+- Emphasis in plain paragraphs is matched span by span rather than with
+  CommonMark's full delimiter stack, so nested spans (`*a **b** c*`),
+  mismatched runs (`___x_`) and rule-of-3 cases (`*foo**bar*`) are only
+  partly rendered there; headings and table cells are spec-compliant
 
 ## Reference
 - https://github.com/MeanderingProgrammer/render-markdown.nvim
