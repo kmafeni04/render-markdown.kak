@@ -147,21 +147,23 @@ provide-module render-markdown %{
     }
 
     # merge two attributed face specs for nested emphasis, e.g.
-    # {+b@Default} + {+i@Default} -> {+bi@Default}; otherwise keep the first
+    # {+b@Default} + {+i@Default} -> {+bi@Default}.  An empty first spec is
+    # replaced by the second; otherwise the first is kept.
     rm_merge_face() { # $1, $2 = face specs
       ob=$OB
       cb=$CB
-      a=${1#$ob}
-      a=${a%$cb}
-      b=${2#$ob}
-      b=${b%$cb}
-      case "$a/$b" in
+      first=${1#$ob}
+      first=${first%$cb}
+      second=${2#$ob}
+      second=${second%$cb}
+      case "$first/$second" in
+        /?*) printf '%s' "$2" ;;
         +*@*/+*@* | +*/+*)
-          attrs=${a#+}
-          rest=${attrs#*@}
-          if [ "$rest" = "$attrs" ]; then rest=; else rest="@$rest"; fi
+          attrs=${first#+}
+          rest=
+          case "$attrs" in *@*) rest="@${attrs#*@}" ;; esac
           attrs=${attrs%%@*}
-          tail=${b#+}
+          tail=${second#+}
           tail=${tail%%@*}
           while [ -n "$tail" ]; do
             c=${tail%"${tail#?}"}
@@ -263,15 +265,9 @@ provide-module render-markdown %{
     rm_face_mask() { # $1 = bitmask
       mask=$1
       face=
-      if [ $((mask & 2)) -ne 0 ]; then face=$kak_opt_render_markdown_bold; fi
-      if [ $((mask & 1)) -ne 0 ]; then
-        if [ -n "$face" ]; then face=$(rm_merge_face "$face" "$kak_opt_render_markdown_italics")
-        else face=$kak_opt_render_markdown_italics; fi
-      fi
-      if [ $((mask & 4)) -ne 0 ]; then
-        if [ -n "$face" ]; then face=$(rm_merge_face "$face" "$kak_opt_render_markdown_strikethrough")
-        else face=$kak_opt_render_markdown_strikethrough; fi
-      fi
+      [ $((mask & 2)) -ne 0 ] && face=$(rm_merge_face "$face" "$kak_opt_render_markdown_bold")
+      [ $((mask & 1)) -ne 0 ] && face=$(rm_merge_face "$face" "$kak_opt_render_markdown_italics")
+      [ $((mask & 4)) -ne 0 ] && face=$(rm_merge_face "$face" "$kak_opt_render_markdown_strikethrough")
       printf '%s' "$face"
     }
 
@@ -315,7 +311,7 @@ provide-module render-markdown %{
                   inner=${str%%'`'*}
                   rest=${str#"$inner"\`}
                   after=${rest%"${rest#?}"}
-                  if [ -n "$inner" ] && [ "$after" != '`' ]; then
+                  if [ "$after" != '`' ]; then
                     rm_code_n=$((rm_code_n + 1))
                     eval "rm_cs$rm_code_n=$pos"
                     eval "rm_ce$rm_code_n=$((pos + ${#inner} + 2))"
@@ -1132,13 +1128,30 @@ provide-module render-markdown %{
             eval "rm_eattr$i=0; rm_eskip$i=0; rm_ecode$i=; rm_etop$i=; rm_esolo$i="
             i=$((i + 1))
           done
+          # top-level spans get one range each; every span also unions its
+          # mask into the content positions it covers
           for span in $RM_EMP_SPANS; do
+            mstart=${span%%,*}
             rest=${span#*,}
+            mend=${rest%%,*}
             rest=${rest#*,}
             cstart=${rest%%,*}
             rest=${rest#*,}
             cend=${rest%%,*}
             mask=${rest#*,}
+            top=1
+            for other in $RM_EMP_SPANS; do
+              [ "$other" = "$span" ] && continue
+              omstart=${other%%,*}
+              or=${other#*,}
+              omend=${or%%,*}
+              if [ "$omstart" -le "$mstart" ] && [ "$omend" -ge "$mend" ] &&
+                { [ "$omstart" -lt "$mstart" ] || [ "$omend" -gt "$mend" ]; }; then
+                top=0
+                break
+              fi
+            done
+            if [ "$top" -eq 1 ]; then eval "rm_etop$mstart=$mend"; fi
             i=$cstart
             while [ "$i" -lt "$cend" ]; do
               eval "rm_eattr$i=$((rm_eattr$i | mask))"
@@ -1153,34 +1166,13 @@ provide-module render-markdown %{
               i=$((i + 1))
             done
           done
+          # code spans drop their backticks and, outside every span, get
+          # their own range
           ci=1
           while [ "$ci" -le "$rm_code_n" ]; do
             eval "cs=\$rm_cs$ci; ce=\$rm_ce$ci; ctext=\$rm_ci$ci"
             eval "rm_ecode$cs=\$ce; rm_ecodeinner$cs=\$ctext"
             eval "rm_eskip$cs=1; rm_eskip$((ce - 1))=1"
-            ci=$((ci + 1))
-          done
-          for span in $RM_EMP_SPANS; do
-            mstart=${span%%,*}
-            r=${span#*,}
-            mend=${r%%,*}
-            top=1
-            for other in $RM_EMP_SPANS; do
-              [ "$other" = "$span" ] && continue
-              omstart=${other%%,*}
-              or=${other#*,}
-              omend=${or%%,*}
-              if [ "$omstart" -le "$mstart" ] && [ "$omend" -ge "$mend" ] &&
-                { [ "$omstart" -lt "$mstart" ] || [ "$omend" -gt "$mend" ]; }; then
-                top=0
-                break
-              fi
-            done
-            if [ "$top" -eq 1 ]; then eval "rm_etop$mstart=$mend"; fi
-          done
-          ci=1
-          while [ "$ci" -le "$rm_code_n" ]; do
-            eval "cs=\$rm_cs$ci; ce=\$rm_ce$ci"
             inside=0
             for span in $RM_EMP_SPANS; do
               mstart=${span%%,*}
