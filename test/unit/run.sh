@@ -50,6 +50,9 @@ export kak_opt_render_markdown_heading_2='{green+f}G2'
 export kak_opt_render_markdown_checkbox_checked='{y}C '
 export kak_opt_render_markdown_checkbox_unchecked='{y}U '
 export kak_opt_render_markdown_bullet='{y}B '
+export kak_opt_render_markdown_bullet_alt='{y}A '
+export kak_opt_indentwidth=2
+export kak_opt__render_markdown_quote_starts=''
 export kak_opt_render_markdown_horizontal_rule='{r}HR'
 export kak_opt_render_markdown_blockquote='{r}Q '
 export kak_opt_render_markdown_link_image='{b}I '
@@ -88,6 +91,32 @@ check 'bullet' \
   "${pre}'6.1,6.7|{y}B '" \
   "$(run list)"
 
+kak_selection='* deep' kak_selection_desc='7.3,7.4'
+check 'bullet depth 1 uses the alternate glyph' \
+  "${pre}'7.3,7.4|{y}A '" \
+  "$(run list)"
+
+kak_selection='* deeper' kak_selection_desc='8.5,8.6'
+check 'bullet depth 2 cycles back to the first glyph' \
+  "${pre}'8.5,8.6|{y}B '" \
+  "$(run list)"
+
+kak_opt_indentwidth=4 kak_selection='* wide' kak_selection_desc='9.5,9.6'
+check 'bullet depth follows indentwidth' \
+  "${pre}'9.5,9.6|{y}A '" \
+  "$(run list)"
+kak_opt_indentwidth=2
+
+kak_opt__render_markdown_quote_starts='11:3' kak_selection='* quoted' kak_selection_desc='11.3,11.4'
+check 'bullet ignores the blockquote prefix' \
+  "${pre}'11.3,11.4|{y}B '" \
+  "$(run list)"
+
+kak_opt__render_markdown_quote_starts='12:3' kak_selection='* quoted deep' kak_selection_desc='12.5,12.6'
+check 'bullet depth inside a blockquote follows the list indent' \
+  "${pre}'12.5,12.6|{y}A '" \
+  "$(run list)"
+
 kak_selection='1. ' kak_selection_desc='25.1,25.3'
 check 'ordered marker keeps its number' \
   "${pre}'25.1,25.3|{y}1. '" \
@@ -113,17 +142,20 @@ set-option -add global _render_markdown_consumed_lines 7" \
 
 kak_selection='> ' kak_selection_desc='8.1,8.2'
 check 'blockquote' \
-  "${pre}'8.1,8.2|{r}Q '" \
+  "set-option -add global _render_markdown_quote_starts 8:3
+${pre}'8.1,8.2|{r}Q '" \
   "$(run blockquote)"
 
 kak_selection='>' kak_selection_desc='9.1,9.1'
 check 'blockquote without space' \
-  "${pre}'9.1,9.1|{r}Q'" \
+  "set-option -add global _render_markdown_quote_starts 9:2
+${pre}'9.1,9.1|{r}Q'" \
   "$(run blockquote)"
 
 kak_selection='>>' kak_selection_desc='10.1,10.2'
 check 'blockquote nested run' \
-  "${pre}'10.1,10.2|{r}QQ'" \
+  "set-option -add global _render_markdown_quote_starts 10:3
+${pre}'10.1,10.2|{r}QQ'" \
   "$(run blockquote)"
 
 kak_selection='[site](https://x)' kak_selection_desc='9.1,9.20'

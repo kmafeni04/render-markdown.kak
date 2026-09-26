@@ -15,3 +15,9 @@
 + [ ] plus bullet unchecked
 - [X] uppercase checked
   * [X] nested star checked
+
+- depth 0 bullet
+  - depth 1 bullet
+    - depth 2 bullet
+  - depth 1 bullet
+- depth 0 bullet

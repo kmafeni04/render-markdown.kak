@@ -10,3 +10,7 @@
 > > nested
 >no-space quote
 >>nested run
+
+> - quoted bullet
+>   - quoted nested
+> - quoted bullet

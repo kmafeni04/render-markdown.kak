@@ -18,8 +18,10 @@ work=$(mktemp -d /tmp/rmtest.XXXXXX) || exit 1
 trap 'rm -rf "$work"' EXIT HUP INT TERM
 : >"$dump"
 
+# Fixtures indent nested lists with two spaces; bullet glyphs cycle by
+# indentwidth, so pin it to keep the goldens host-independent.
 kak_json_start "rmtest-$$" "$work" \
-  "source '$plugin'; set-option global render_markdown_margin 0; set-option global _render_markdown_debug_file '$dump'; edit '$fixture'; execute-keys '${cursor}G'; _render-markdown-update"
+  "source '$plugin'; set-option global render_markdown_margin 0; set-option global indentwidth 2; set-option global _render_markdown_debug_file '$dump'; edit '$fixture'; execute-keys '${cursor}G'; _render-markdown-update"
 sleep 2
 kak_json_stop
 

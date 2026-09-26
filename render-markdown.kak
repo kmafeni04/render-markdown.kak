@@ -4,6 +4,7 @@ provide-module render-markdown %{
   declare-option -hidden range-specs _render_markdown_ranges
   declare-option -hidden str _render_markdown_kind ''
   declare-option -hidden str-list _render_markdown_consumed_lines ''
+  declare-option -hidden str-list _render_markdown_quote_starts ''
   declare-option -hidden str-list _render_markdown_fence_spans ''
   declare-option -hidden str-list _render_markdown_fence_starts ''
   declare-option -hidden str-list _render_markdown_fence_ends ''
@@ -36,6 +37,7 @@ provide-module render-markdown %{
   declare-option str render_markdown_checkbox_unchecked "{yellow+f}󰄱 "
 
   declare-option str render_markdown_bullet "{yellow+f} "
+  declare-option str render_markdown_bullet_alt "{yellow+f} "
 
   declare-option str render_markdown_horizontal_rule "{rgb:3e3e3e+f}──────────────────"
 
@@ -880,6 +882,35 @@ provide-module render-markdown %{
         fi
       done
     }
+
+    # face for the current unordered bullet marker.  Cycles the two bullet
+    # options by list nesting depth (marker indent divided by indentwidth), so
+    # nested lists alternate glyphs.  A blockquote prefix is not list
+    # indentation, so the quote matcher records where each quote's content
+    # starts and it is subtracted here.
+    rm_bullet_face() {
+      col=${kak_selection_desc#*.}
+      col=${col%%,*}
+      start=1
+      line=$(rm_line)
+      for rec in $kak_opt__render_markdown_quote_starts; do
+        case "$rec" in
+          "$line":*) start=${rec#*:} ;;
+        esac
+      done
+      indent=$((col - start))
+      [ "$indent" -gt 0 ] || indent=0
+      # indentwidth 0 means tab indentation: count one character per level
+      width=${kak_opt_indentwidth:-4}
+      [ "$width" -gt 0 ] || width=1
+      depth=$((indent / width))
+      if [ $((depth % 2)) -eq 1 ]; then
+        printf '%s' "$kak_opt_render_markdown_bullet_alt"
+      else
+        printf '%s' "$kak_opt_render_markdown_bullet"
+      fi
+    }
+
     render_markdown_classify() {
       kind=$1
       case "$kind" in
@@ -1018,7 +1049,7 @@ provide-module render-markdown %{
               face=$(rm_head "$kak_opt_render_markdown_bullet")
               content=$kak_selection
               ;;
-            *) face=$kak_opt_render_markdown_bullet ;;
+            *) face=$(rm_bullet_face) ;;
           esac
           rm_emit "$face" "$content"
           ;;
@@ -1030,7 +1061,10 @@ provide-module render-markdown %{
           ;;
         blockquote)
           # replace the leading '>' run with one glyph per '>' (whitespace is
-          # kept): '> ' -> '▋ ', '>text' -> '▋text', '>> t' -> '▋▋ t'
+          # kept): '> ' -> '▋ ', '>text' -> '▋text', '>> t' -> '▋▋ t'.  Also
+          # record where the quote's content starts, after the '>' run and its
+          # single optional space, so a bullet inside the quote does not count
+          # the prefix as list indentation.
           cb=$CB # close-brace char (see the library header)
           head=$(printf '%s' "$kak_opt_render_markdown_blockquote" | sed "s/$cb.*/$cb/")
           glyph=$(printf '%s' "$kak_opt_render_markdown_blockquote" | sed "s/.*$cb//;s/[[:space:]]*$//")
@@ -1044,6 +1078,13 @@ provide-module render-markdown %{
               *) drawn="$drawn$c" ;;
             esac
           done
+          # one space after the run belongs to the marker; the rest is indent
+          col=${kak_selection_desc#*.}
+          col=${col%%,*}
+          after=${kak_selection##*'>'}
+          content=$((col + ${#kak_selection} - ${#after}))
+          if [ -n "$after" ]; then content=$((content + 1)); fi
+          printf "set-option -add global _render_markdown_quote_starts %s:%s\n" "$(rm_line)" "$content"
           rm_emit "$head" "$drawn"
           ;;
         table)
@@ -1210,7 +1251,9 @@ provide-module render-markdown %{
         # kak_opt_render_markdown_heading_3 kak_opt_render_markdown_heading_4
         # kak_opt_render_markdown_heading_5 kak_opt_render_markdown_heading_6
         # kak_opt_render_markdown_checkbox_checked kak_opt_render_markdown_checkbox_unchecked
-        # kak_opt_render_markdown_bullet kak_opt_render_markdown_horizontal_rule
+        # kak_opt_render_markdown_bullet kak_opt_render_markdown_bullet_alt
+        # kak_opt_indentwidth
+        # kak_opt_render_markdown_horizontal_rule
         # kak_opt_render_markdown_blockquote kak_opt_render_markdown_link_image
         # kak_opt_render_markdown_link_web kak_opt_render_markdown_link_link
         # kak_opt_render_markdown_link_mail kak_opt_render_markdown_strikethrough
@@ -1218,6 +1261,7 @@ provide-module render-markdown %{
         # kak_opt_render_markdown_inline_code kak_opt__render_markdown_debug_file
         # kak_opt_render_markdown_table_separator kak_opt_render_markdown_table_pipe
         # kak_opt__render_markdown_consumed_lines kak_selection
+        # kak_opt__render_markdown_quote_starts
         # Skip matches that start inside a non-markdown code fence (the codeblock
         # matcher ran first and recorded those spans).
         line=${kak_selection_desc%%.*}
@@ -1478,6 +1522,7 @@ provide-module render-markdown %{
   define-command -hidden _render-markdown-render %{
     set-option window _render_markdown_bare_ranges
     set-option global _render_markdown_consumed_lines
+    set-option global _render_markdown_quote_starts
     # a bare set-option clears these str-list accumulators
     set-option global _render_markdown_fence_spans
     set-option global _render_markdown_fence_starts
@@ -1497,8 +1542,11 @@ provide-module render-markdown %{
       # hrules before lists: a rule line ("- - -") is consumed by the rule
       # classifier, so the list matcher does not draw a bullet on it
       _render-markdown-match-hrules
-      _render-markdown-match-lists
+      # blockquotes before lists: the quote classifier records where each
+      # quote's content starts, so a bullet inside it excludes the '>'
+      # prefix from its nesting depth
       _render-markdown-match-blockquotes
+      _render-markdown-match-lists
       _render-markdown-match-tables
       _render-markdown-match-links
       _render-markdown-match-emphasis
