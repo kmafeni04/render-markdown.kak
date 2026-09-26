@@ -31,6 +31,10 @@ provide-module render-markdown %{
   declare-option str render_markdown_heading_6 "{red+f}     󰲫"
 
   declare-option str render_markdown_codeblock_start " "
+  # Fence info-string label, drawn after the opening marker; the icon is the
+  # fallback when the language is not in the built-in map (see rm_lang_icon).
+  declare-option str render_markdown_codeblock_language "{cyan+f}"
+  declare-option str render_markdown_codeblock_language_icon "󰅩"
   declare-option str render_markdown_codeblock_end " "
 
   declare-option str render_markdown_checkbox_checked "{yellow+f}󰱒 "
@@ -169,6 +173,32 @@ provide-module render-markdown %{
       case "$1" in
         *"$cb"*) printf '%s' "${1%%$cb*}$cb" ;;
         *) printf '' ;;
+      esac
+    }
+
+    # icon for a fenced code block's language string.  A small built-in map
+    # for the languages the docs mention; anything else falls back to the
+    # configurable generic icon, so users can extend or replace it.
+    rm_lang_icon() {
+      lang=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')
+      case "$lang" in
+        lua) printf '%s' '󰢱' ;;
+        py | python) printf '%s' '󰌠' ;;
+        js | javascript) printf '%s' '󰌞' ;;
+        ts | typescript) printf '%s' '󰛦' ;;
+        sh | bash | zsh | shell) printf '%s' '󰆍' ;;
+        md | markdown) printf '%s' '󰍔' ;;
+        json) printf '%s' '󰘦' ;;
+        yaml | yml) printf '%s' '󰈙' ;;
+        rs | rust) printf '%s' '󱘗' ;;
+        go | golang) printf '%s' '󰟓' ;;
+        c) printf '%s' '󰙱' ;;
+        cpp | c++) printf '%s' '󰙲' ;;
+        html) printf '%s' '󰌝' ;;
+        css) printf '%s' '󰌜' ;;
+        sql) printf '%s' '󰆼' ;;
+        txt | text) printf '%s' '󰈙' ;;
+        *) printf '%s' "$kak_opt_render_markdown_codeblock_language_icon" ;;
       esac
     }
 
@@ -1438,6 +1468,30 @@ provide-module render-markdown %{
         evaluate-commands -itersel -draft %{
           execute-keys "<a-:><semicolon>xs`+<ret>"
           set-option -add global _render_markdown_fence_ends "%val{selection_desc}"
+        }
+        # Language labels: the opening fence's info string is faced and
+        # prefixed with the language's icon.  The `\K` search narrows the
+        # selection to the info string alone; one shell call per fence (fences
+        # are far rarer than inline elements).
+        evaluate-commands -itersel -draft %{
+          execute-keys "<a-:><a-semicolon><semicolon>x"
+          try %{
+            execute-keys "s`+\h*\K[^`\n][^\n]*<ret>"
+            evaluate-commands %sh{
+              # kak_selection_desc kak_opt__render_markdown_debug_file
+              # kak_opt_render_markdown_codeblock_language
+              # kak_opt_render_markdown_codeblock_language_icon
+              eval "$kak_opt__render_markdown_sh_lib"
+              info=$kak_selection
+              # drop trailing blanks the regex may have captured
+              info=${info%"${info##*[![:space:]]}"}
+              if [ -n "$info" ]; then
+                lang=${info%%[[:space:]]*}
+                icon=$(rm_lang_icon "$lang")
+                rm_emit "$kak_opt_render_markdown_codeblock_language" "$icon $info"
+              fi
+            }
+          }
         }
         evaluate-commands %sh{
           eval "$kak_opt__render_markdown_sh_lib"

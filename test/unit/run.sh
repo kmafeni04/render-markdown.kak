@@ -73,6 +73,7 @@ export kak_opt_render_markdown_bold='{B}'
 export kak_opt_render_markdown_inline_code='{c}'
 export kak_opt_render_markdown_codeblock_start='CB'
 export kak_opt_render_markdown_codeblock_end='CE'
+export kak_opt_render_markdown_codeblock_language_icon='GEN'
 export kak_opt__render_markdown_debug_file=''
 export kak_opt__render_markdown_consumed_lines=''
 
@@ -520,6 +521,10 @@ check 'align columns by display width for wide glyphs' \
 |------|-----|
 | a    | b   |" \
   "$(printf '%s\n' '| 名前 | age |' '|------|-----|' '| a | b |' | render_markdown_table_align)"
+
+check 'rm_lang_icon uses a per-language icon' '󰢱' "$(rm_lang_icon lua)"
+check 'rm_lang_icon is case-insensitive' '󰢱' "$(rm_lang_icon Lua)"
+check 'rm_lang_icon falls back to the generic icon' 'GEN' "$(rm_lang_icon unknown)"
 
 if [ "$fails" -gt 0 ]; then
   printf '%s\n' "$(cm_red "FAIL $fails of $((passes + fails)) checks")"

@@ -84,6 +84,10 @@ inside cells is rendered in place.
 # This heading is NOT rendered (fenced with a non-markdown language)
 ```
 
+```lua
+print("the info string becomes a language label")
+```
+
 ```markdown
 # This one IS rendered (markdown-tagged fence)
 ```
