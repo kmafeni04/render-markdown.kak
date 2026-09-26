@@ -131,12 +131,13 @@ provide-module render-markdown %{
     }
 
     # split a line into its leading whitespace ($rm_indent), blockquote
-    # prefix ($rm_qprefix, '>' markers each with an optional space) and the
-    # remaining text ($rm_body)
+    # prefix ($rm_qprefix, '>' markers each with an optional space), the
+    # column its text starts at ($rm_start) and the remaining text ($rm_body)
     rm_line_split() {
       rm_parts=$(printf '%s' "$1" | sed -n 's/^\([[:space:]]*\)\(\(>[[:space:]]\{0,1\}\)*\).*/\1|\2/p')
       rm_indent=${rm_parts%%|*}
       rm_qprefix=${rm_parts#*|}
+      rm_start=$((${#rm_indent} + ${#rm_qprefix} + 1))
       rm_body=${1#"$rm_indent$rm_qprefix"}
     }
 
@@ -983,7 +984,7 @@ provide-module render-markdown %{
           rm_line_split "$underline"
           uprefix=$rm_qprefix
           ubody=$(printf '%s' "$rm_body" | sed 's/^[[:space:]]*//')
-          ustart=$((${#rm_indent} + ${#rm_qprefix} + 1))
+          ustart=$rm_start
           # Split the text into lines, then take the longest suffix of plain
           # paragraph lines immediately before the underline.  A block
           # construct (heading, quote, list marker, fence, thematic break)
@@ -1045,8 +1046,7 @@ provide-module render-markdown %{
             eval "text=\$row$i"
             rm_line_split "$text"
             text_bytes=$(($(printf '%s' "$text" | wc -c)))
-            start=$((${#rm_indent} + ${#rm_qprefix} + 1))
-            rm_emit_desc "$line.$start,$line.$text_bytes" "$face" "$(rm_inline "$rm_body" "$face")"
+            rm_emit_desc "$line.$rm_start,$line.$text_bytes" "$face" "$(rm_inline "$rm_body" "$face")"
             consumed="$consumed $line"
             line=$((line + 1))
             i=$((i + 1))
@@ -1098,12 +1098,10 @@ provide-module render-markdown %{
               *) drawn="$drawn$c" ;;
             esac
           done
-          # one space after the run belongs to the marker; the rest is indent
+          # the text starts right after the marker prefix the matcher selected
           col=${kak_selection_desc#*.}
           col=${col%%,*}
-          after=${kak_selection##*'>'}
-          content=$((col + ${#kak_selection} - ${#after}))
-          if [ -n "$after" ]; then content=$((content + 1)); fi
+          content=$((col + ${#kak_selection}))
           printf "set-option -add global _render_markdown_quote_starts %s:%s\n" "$(rm_line)" "$content"
           rm_emit "$head" "$drawn"
           ;;
@@ -1433,7 +1431,7 @@ provide-module render-markdown %{
     evaluate-commands -draft %{
       _render-markdown-select
       try %{
-        execute-keys "s^\h*(?:<gt>\h?)+<ret>"
+        execute-keys "s^\h*(?:>\h?)+<ret>"
         _render-markdown-handle blockquote
       }
     }
