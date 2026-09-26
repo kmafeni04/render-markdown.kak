@@ -127,7 +127,7 @@ provide-module render-markdown %{
 
     # start line of the current selection descriptor (a.b,c.d -> a)
     rm_line() {
-      printf '%s' "$kak_selection_desc" | sed 's/\..*//'
+      printf '%s' "${kak_selection_desc%%.*}"
     }
 
     # split a line into its leading whitespace ($rm_indent), blockquote
@@ -1026,6 +1026,7 @@ provide-module render-markdown %{
               '#' | '>' | '-' | '*' | '+' | '=' | '~' | '_' | "$bt" | [0-9]) ok=0 ;;
             esac
             [ "$ok" -eq 1 ] || break
+            eval "rowbody$i=\$rm_body; rowstart$i=\$rm_start"
             first_row=$i
             i=$((i - 1))
           done
@@ -1043,10 +1044,9 @@ provide-module render-markdown %{
           consumed=
           i=$first_row
           while [ "$i" -le "$rows" ]; do
-            eval "text=\$row$i"
-            rm_line_split "$text"
+            eval "text=\$row$i; body=\$rowbody$i; start=\$rowstart$i"
             text_bytes=$(($(printf '%s' "$text" | wc -c)))
-            rm_emit_desc "$line.$rm_start,$line.$text_bytes" "$face" "$(rm_inline "$rm_body" "$face")"
+            rm_emit_desc "$line.$start,$line.$text_bytes" "$face" "$(rm_inline "$body" "$face")"
             consumed="$consumed $line"
             line=$((line + 1))
             i=$((i + 1))
