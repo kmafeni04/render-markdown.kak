@@ -1306,10 +1306,15 @@ provide-module render-markdown %{
           esac
           rm_emit "$face" "$content"
           ;;
-        link-mail)
+        link-mail | link-autolink)
           if rm_consumed; then exit 0; fi
           content=$(printf '%s' "$kak_selection" | sed -e 's/^<//' -e 's/>$//')
-          rm_emit "$kak_opt_render_markdown_link_mail" "$content"
+          # the two kinds differ only in the prefix face
+          case "$kind" in
+            link-autolink) face=$kak_opt_render_markdown_link_web ;;
+            *) face=$kak_opt_render_markdown_link_mail ;;
+          esac
+          rm_emit "$face" "$content"
           ;;
         emphasis)
           if rm_consumed; then exit 0; fi
@@ -1639,9 +1644,18 @@ provide-module render-markdown %{
         execute-keys "s!?\[[^\[]+\]\[[^\[]+\]<ret>"
         _render-markdown-handle link
       }
+      # autolinks run before mail: a "<mailto:...>" must be taken as a URI
+      # autolink, which the non-greedy body keeps to the first ">"
       try %{
         _render-markdown-select
-        execute-keys "s<lt>\S+@\S+\.[^\n]+<gt><ret>"
+        execute-keys "s<lt>[A-Za-z][A-Za-z0-9+.-]*:[^\n]*?<gt><ret>"
+        _render-markdown-handle link-autolink
+      }
+      # a scheme means the autolink matcher already handled it, so the mail
+      # matcher only takes bare addresses
+      try %{
+        _render-markdown-select
+        execute-keys "s<lt>[^:]+@\S+\.[^\n]+<gt><ret>"
         _render-markdown-handle link-mail
       }
     }

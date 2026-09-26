@@ -267,6 +267,11 @@ check 'mail link content escapes a quote once' \
   "${pre}'13.1,13.10|{b}M a''b@c.d'" \
   "$(run link-mail)"
 
+kak_selection='<https://x>' kak_selection_desc='40.1,40.11'
+check 'autolink' \
+  "${pre}'40.1,40.11|{b}W https://x'" \
+  "$(run link-autolink)"
+
 kak_selection='`code`' kak_selection_desc='16.1,16.6'
 check 'inline code' \
   "${pre}'16.1,16.6|{c}code'" \

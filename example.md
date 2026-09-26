@@ -66,6 +66,7 @@ and a [web link](https://kakoune.org).
 - [markdown file](example.md)
 - [reference style][ref]
 - <user@example.com>
+- <https://kakoune.org>
 
 [ref]: https://example.com
 

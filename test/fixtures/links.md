@@ -6,3 +6,7 @@
 - [reference][ref]
 - <user@test.com>
 - ([parenthesized](test.md))
+- <https://autolink.example.com>
+- <mailto:user@test.com>
+- <ftp://files.example.com>
+- two <https://a.example> and <https://b.example> links
