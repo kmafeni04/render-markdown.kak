@@ -1403,7 +1403,7 @@ provide-module render-markdown %{
     evaluate-commands -draft %{
       _render-markdown-select
       try %{
-        execute-keys "s^\h*>?\h*>*(-(\h*-){2,}|_(\h*_){2,}|\*(\h*\*){2,})\h*\n<ret>s[-_*](\h*[-_*])*<ret>"
+        execute-keys "s^\h*(?:>\h?)*\h*(-(\h*-){2,}|_(\h*_){2,}|\*(\h*\*){2,})\h*\n<ret>s[-_*](\h*[-_*])*<ret>"
         _render-markdown-handle hrule
       }
     }
