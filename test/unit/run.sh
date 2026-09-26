@@ -49,6 +49,9 @@ export kak_opt_render_markdown_heading_1='{blue+f}G1'
 export kak_opt_render_markdown_heading_2='{green+f}G2'
 export kak_opt_render_markdown_checkbox_checked='{y}C '
 export kak_opt_render_markdown_checkbox_unchecked='{y}U '
+export kak_opt_render_markdown_checkbox_inapplicable='{y}I '
+export kak_opt_render_markdown_checkbox_in_progress='{y}P '
+export kak_opt_render_markdown_checkbox_cancelled='{y}X '
 export kak_opt_render_markdown_bullet='{y}B '
 export kak_opt_render_markdown_bullet_alt='{y}A '
 export kak_opt_indentwidth=2
@@ -95,6 +98,21 @@ check 'checkbox checked' \
 kak_selection='- [ ] todo' kak_selection_desc='5.1,5.10'
 check 'checkbox unchecked' \
   "${pre}'5.1,5.10|{y}U '" \
+  "$(run list)"
+
+kak_selection='- [~] n/a' kak_selection_desc='6.1,6.9'
+check 'checkbox inapplicable' \
+  "${pre}'6.1,6.9|{y}I '" \
+  "$(run list)"
+
+kak_selection='- [/] doing' kak_selection_desc='7.1,7.11'
+check 'checkbox in progress' \
+  "${pre}'7.1,7.11|{y}P '" \
+  "$(run list)"
+
+kak_selection='- [-] scrapped' kak_selection_desc='8.1,8.14'
+check 'checkbox cancelled' \
+  "${pre}'8.1,8.14|{y}X '" \
   "$(run list)"
 
 kak_selection='* item' kak_selection_desc='6.1,6.7'

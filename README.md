@@ -42,7 +42,7 @@ screen).
 Currently the plugin supports rendering
 - Headings (ATX, setext, including multi-line setext paragraphs)
 - Codeblocks (backtick fences of three to six backticks)
-- Checkboxes
+- Checkboxes (`[x]`, `[ ]`, GitLab `[~]`, Obsidian `[/]` and `[-]`)
 - List markers (bullets, and ordered numbers kept in place)
 - Thematic breaks (`---`, `***`, `___`, and spaced forms such as `- - -`)
 - Blockquotes
@@ -75,7 +75,7 @@ top of `render-markdown.kak`); set one to change that rendering:
 | --- | --- |
 | `render_markdown_heading_1` … `render_markdown_heading_6` | ATX/setext heading markers and faces |
 | `render_markdown_codeblock_start`, `render_markdown_codeblock_end` | Opening and closing fence markers |
-| `render_markdown_checkbox_checked`, `render_markdown_checkbox_unchecked` | Task-list checkboxes |
+| `render_markdown_checkbox_checked`, `render_markdown_checkbox_unchecked`, `render_markdown_checkbox_inapplicable`, `render_markdown_checkbox_in_progress`, `render_markdown_checkbox_cancelled` | Task-list checkboxes (`[x]`/`[ ]` plus GitLab `[~]` and Obsidian `[/]`/`[-]`) |
 | `render_markdown_bullet`, `render_markdown_bullet_alt` | Unordered bullet markers, cycled by nesting depth (`indentwidth` steps, blockquote prefixes ignored); ordered numbers reuse the first's face |
 | `render_markdown_horizontal_rule` | Thematic break line |
 | `render_markdown_blockquote` | Blockquote marker |

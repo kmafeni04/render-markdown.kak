@@ -35,6 +35,11 @@ provide-module render-markdown %{
 
   declare-option str render_markdown_checkbox_checked "{yellow+f}󰱒 "
   declare-option str render_markdown_checkbox_unchecked "{yellow+f}󰄱 "
+  # GitLab's inapplicable ([~]) and Obsidian's in-progress ([/]) and
+  # cancelled ([-]) task states
+  declare-option str render_markdown_checkbox_inapplicable "{yellow+f}󰳌 "
+  declare-option str render_markdown_checkbox_in_progress "{yellow+f}󰥔 "
+  declare-option str render_markdown_checkbox_cancelled "{yellow+f}󰜺 "
 
   declare-option str render_markdown_bullet "{yellow+f} "
   declare-option str render_markdown_bullet_alt "{yellow+f} "
@@ -1070,6 +1075,9 @@ provide-module render-markdown %{
           case "$kak_selection" in
             [-*+]*\[[xX]\]*) face=$kak_opt_render_markdown_checkbox_checked ;;
             [-*+]*"[ ]"*) face=$kak_opt_render_markdown_checkbox_unchecked ;;
+            [-*+]*"[~]"*) face=$kak_opt_render_markdown_checkbox_inapplicable ;;
+            [-*+]*"[/]"*) face=$kak_opt_render_markdown_checkbox_in_progress ;;
+            [-*+]*"[-]"*) face=$kak_opt_render_markdown_checkbox_cancelled ;;
             [0-9]*)
               # an ordered marker is content, so it keeps its number.  Reuse
               # the bullet's face when it has one, so both kinds look alike
@@ -1309,6 +1317,8 @@ provide-module render-markdown %{
         # kak_opt_render_markdown_heading_3 kak_opt_render_markdown_heading_4
         # kak_opt_render_markdown_heading_5 kak_opt_render_markdown_heading_6
         # kak_opt_render_markdown_checkbox_checked kak_opt_render_markdown_checkbox_unchecked
+        # kak_opt_render_markdown_checkbox_inapplicable kak_opt_render_markdown_checkbox_in_progress
+        # kak_opt_render_markdown_checkbox_cancelled
         # kak_opt_render_markdown_bullet kak_opt_render_markdown_bullet_alt
         # kak_opt_indentwidth
         # kak_opt_render_markdown_horizontal_rule
@@ -1454,7 +1464,7 @@ provide-module render-markdown %{
     evaluate-commands -draft %{
       _render-markdown-select
       try %{
-        execute-keys "s^\h*(?:>\h?)*\h*([-*+]\h\[[xX<space>]\]|[-*+]\h|[0-9]{1,9}[.)]\h)<ret>s([-*+]\h\[[xX<space>]\]|[-*+]\h|[0-9]{1,9}[.)]\h)<ret>_L"
+        execute-keys "s^\h*(?:>\h?)*\h*([-*+]\h\[[xX<space>~/-]\]|[-*+]\h|[0-9]{1,9}[.)]\h)<ret>s([-*+]\h\[[xX<space>~/-]\]|[-*+]\h|[0-9]{1,9}[.)]\h)<ret>_L"
         _render-markdown-handle list
       }
     }

@@ -17,10 +17,16 @@ and a [web link](https://kakoune.org).
 
 ## Lists
 
-- [x] checked task
-- [ ] unchecked task
 * plain bullet
 * second bullet
+
+## Checkboxes
+
+- [x] checked task
+- [ ] unchecked task
+- [~] inapplicable task (GitLab)
+- [/] task in progress (Obsidian)
+- [-] cancelled task (Obsidian)
 
 ## Horizontal rules
 
