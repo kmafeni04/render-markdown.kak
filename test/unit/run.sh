@@ -568,6 +568,12 @@ set-option global _render_markdown_quote_glyph 'Q'
 set-option global _render_markdown_bullet_head '{y}'" \
   "$(rm_cache_markers)"
 
+check 'rm_status reports the window state' \
+  'render-markdown: enabled=true buffer=example.md (42 lines) band=1-30 timestamp=9' \
+  "$(kak_opt__render_markdown_buf=example.md kak_opt__render_markdown_lines=42 \
+    kak_opt__render_markdown_cache='7 1 30' kak_opt__render_markdown_ts=9 \
+    rm_status true)"
+
 if [ "$fails" -gt 0 ]; then
   printf '%s\n' "$(cm_red "FAIL $fails of $((passes + fails)) checks")"
   exit 1

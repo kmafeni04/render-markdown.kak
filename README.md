@@ -93,6 +93,9 @@ face: it sets how many lines beyond the viewport are rendered and cached.
 `render_markdown_raw_in_insert` (default off) drops the rendered view while in
 insert mode so the raw Markdown is editable, and restores it on returning to
 normal mode.
+`render-markdown-status-toggle` prints the window's enabled state, buffer,
+cached band and last render timestamp; `render-markdown-debug` lists the range
+descriptors on the cursor line.
 
 ## Table commands
 

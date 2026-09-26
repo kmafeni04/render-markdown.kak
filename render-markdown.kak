@@ -1022,6 +1022,21 @@ provide-module render-markdown %{
       fi
     }
 
+    # One-line window status for render-markdown-status-toggle: enabled state,
+    # buffer name and line count, the cached render band ("first-last") and the
+    # last render timestamp.  The cache option holds "<timestamp> <first> <last>".
+    rm_status() { # $1 = enabled state
+      state=$1
+      set -- $kak_opt__render_markdown_cache
+      printf 'render-markdown: enabled=%s buffer=%s (%s lines) band=%s-%s timestamp=%s' \
+        "$state" \
+        "$kak_opt__render_markdown_buf" \
+        "$kak_opt__render_markdown_lines" \
+        "${2:-unset}" \
+        "${3:-unset}" \
+        "$kak_opt__render_markdown_ts"
+    }
+
     render_markdown_classify() {
       kind=$1
       case "$kind" in
@@ -1716,7 +1731,7 @@ provide-module render-markdown %{
     }
   }
 
-  define-command render-markdown-enable %{
+  define-command render-markdown-enable -docstring 'Enable markdown rendering' %{
     set-option window _render_markdown_cache ''
     set-option window _render_markdown_cache_buf ''
     hook -group render-markdown-update window NormalIdle .* _render-markdown-update
@@ -1725,13 +1740,13 @@ provide-module render-markdown %{
     add-highlighter window/_render_markdown_ranges replace-ranges _render_markdown_ranges
   }
 
-  define-command render-markdown-disable %{
+  define-command render-markdown-disable -docstring 'Disable markdown rendering' %{
     remove-highlighter window/_render_markdown_ranges
     remove-hooks window render-markdown-update
     remove-hooks window render-markdown-modes
   }
 
-  define-command render-markdown-toggle %{
+  define-command render-markdown-toggle -docstring 'Toggle markdown rendering' %{
     try %{
       render-markdown-disable
     } catch %{
@@ -1739,9 +1754,59 @@ provide-module render-markdown %{
     }
   }
 
+  # Print one status line for the given enabled state.
+  define-command -hidden _render-markdown-status-line -params 1 %{
+    evaluate-commands %sh{
+      # kak_opt__render_markdown_buf kak_opt__render_markdown_lines
+      # kak_opt__render_markdown_cache kak_opt__render_markdown_ts
+      eval "$kak_opt__render_markdown_sh_lib"
+      printf "echo '%s'\n" "$(rm_quote "$(rm_status "$1")")"
+    }
+  }
+
+  # Report the window's render state: whether rendering is on, the buffer and
+  # its line count, the cached band and the last render timestamp.  There is no
+  # side-effect-free query for "is the highlighter installed", so remove it
+  # (which fails while rendering is off) and put it back when it succeeded.
+  define-command render-markdown-status-toggle -docstring 'Print the current render status' %{
+    try %{
+      remove-highlighter window/_render_markdown_ranges
+      add-highlighter window/_render_markdown_ranges replace-ranges _render_markdown_ranges
+      _render-markdown-status-line true
+    } catch %{
+      _render-markdown-status-line false
+    }
+  }
+
+  # Print the emitted range descriptors on the cursor line, for diagnosing a
+  # render.  Reads the bare ranges from the last render, so it also reports
+  # them while rendering is off.  Bare ranges look like "desc|face+text"; only
+  # the descriptor is shown, so entries with spaces need no re-quoting.
+  define-command render-markdown-debug -docstring 'List the range descriptors on the cursor line' %{
+    evaluate-commands %sh{
+      # kak_opt__render_markdown_bare_ranges kak_cursor_line
+      line=$kak_cursor_line
+      found=
+      for r in $kak_opt__render_markdown_bare_ranges; do
+        # whitespace splitting breaks entries with spaces; a real entry starts
+        # with "desc|", and the descriptor is the part before the "|"
+        case "$r" in
+          *'|'*) ;;
+          *) continue ;;
+        esac
+        d=${r%%|*}
+        if [ "${d%%.*}" = "$line" ]; then
+          printf "echo '%s'\n" "$d"
+          found=1
+        fi
+      done
+      [ -n "$found" ] || printf "echo 'render-markdown: no ranges on line %s'\n" "$line"
+    }
+  }
+
   # Select the table enclosing the cursor (a run of lines whose first
   # non-blank character is a |). Adapted from kakoune-table.
-  define-command render-markdown-table-select %{
+  define-command render-markdown-table-select -docstring 'Select the table enclosing the cursor' %{
     try %{
       execute-keys "gi<a-k>\|<ret>"
     } catch %{
@@ -1762,7 +1827,7 @@ provide-module render-markdown %{
   # rewrite every row with padded cells (separator rows get dash runs of
   # width+2, at least three dashes). Runs via the shell library, so it works
   # with uneven rows and keeps the first line's indentation.
-  define-command render-markdown-table-format %{
+  define-command render-markdown-table-format -docstring 'Align the table enclosing the cursor' %{
     evaluate-commands -save-regs m %{
       render-markdown-table-select
       evaluate-commands %sh{
