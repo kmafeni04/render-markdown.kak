@@ -149,8 +149,6 @@ intended.
 - Backtick fences longer than six backticks are not supported: the opening and
   closing runs must be the same length, and only lengths three through six are
   matched
-- Inline code spans use a single backtick, so CommonMark's multi-backtick
-  spans (a run of two or more backticks) are left literal
 - Table cell inline rendering pads with trailing spaces, so cell text that
   contains emphasis is left-aligned rather than preserving interior spacing
 - Links are matched separately from emphasis, so emphasis inside or around a

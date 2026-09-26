@@ -272,6 +272,11 @@ check 'inline code' \
   "${pre}'16.1,16.6|{c}code'" \
   "$(run emphasis)"
 
+kak_selection='``code``' kak_selection_desc='60.1,60.8'
+check 'multi-backtick code span' \
+  "${pre}'60.1,60.8|{c}code'" \
+  "$(run emphasis)"
+
 kak_selection='~~gone~~' kak_selection_desc='17.1,17.8'
 check 'strikethrough' \
   "${pre}'17.1,17.8|{s}gone'" \
@@ -442,6 +447,7 @@ check 'heading plain content' 'ABC' "$(rm_inline 'ABC' '{H}')"
 check 'heading bold span' '{H+b}bold{H}' "$(rm_inline '**bold**' '{H}')"
 check 'heading italic span' 'x{H+i}i{H}y' "$(rm_inline 'x*i*y' '{H}')"
 check 'heading code span' 'a {C}c{H} b' "$(rm_inline 'a `c` b' '{H}')"
+check 'heading multi-backtick code span' '{C}two{H}' "$(rm_inline '``two``' '{H}')"
 check 'heading strike span' '{H+s}g{H}' "$(rm_inline '~~g~~' '{H}')"
 check 'heading web link' 'z{W}site{H}' "$(rm_inline 'z[site](https://x)' '{H}')"
 check 'heading plain link' 'q{L}f{H}' "$(rm_inline 'q[f](rel.md)' '{H}')"

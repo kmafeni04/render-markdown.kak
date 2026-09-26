@@ -15,6 +15,7 @@ Headings can contain inline formatting; the markers are replaced inline:
 
 `inline code`, **bold**, *italic*, _also italic_, __also bold__, ~~strikethrough~~,
 and a [web link](https://kakoune.org).
+``code with a ` backtick``
 
 ## Lists
 

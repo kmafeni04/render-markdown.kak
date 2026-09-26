@@ -340,6 +340,49 @@ provide-module render-markdown %{
     #   RM_EMP_SPANS = "mstart,mend,cstart,cend,mask ..." (mask: i=1 b=2 s=4)
     #   RM_EMP_USED  = "p1,p2 ..." delimiter-marker ranges to drop
     #   rm_code_n, rm_cs/ce/ci* = inline code spans (full range and content)
+    # Locate the code span that starts at the first character of $1 (a run of
+    # backticks).  A span closes at the next backtick run of exactly the same
+    # length (CommonMark); a run of another length is content.  Sets
+    # rm_code_len (total span length), rm_code_inner (content) and rm_code_after
+    # (text after the span).  Returns 1 when there is no closer, in which case
+    # rm_code_len is just the opening run and the span is literal.
+    rm_code_find() {
+      text=$1
+      rest=${text#?}
+      rlen=1
+      next=${rest%"${rest#?}"}
+      while [ "$next" = '`' ]; do
+        rest=${rest#?}
+        rlen=$((rlen + 1))
+        next=${rest%"${rest#?}"}
+      done
+      scan=$rest
+      while [ -n "$scan" ]; do
+        c=${scan%"${scan#?}"}
+        if [ "$c" != '`' ]; then
+          scan=${scan#?}
+          continue
+        fi
+        run=$scan
+        n=0
+        while [ -n "$run" ] && [ "${run%"${run#?}"}" = '`' ]; do
+          run=${run#?}
+          n=$((n + 1))
+        done
+        if [ "$n" -eq "$rlen" ]; then
+          rm_code_inner=${rest%"$scan"}
+          rm_code_after=$run
+          rm_code_len=$((${#rm_code_inner} + 2 * rlen))
+          return 0
+        fi
+        scan=$run
+      done
+      rm_code_inner=
+      rm_code_after=$rest
+      rm_code_len=$rlen
+      return 1
+    }
+
     rm_emphasis_parse() {
       str=$1
       rm_e_n=0
@@ -365,27 +408,17 @@ provide-module render-markdown %{
             esac
             ;;
           '`')
-            if [ "$prev" != '`' ] && [ "${str%"${str#?}"}" != '`' ]; then
-              case "$str" in
-                *'`'*)
-                  inner=${str%%'`'*}
-                  rest=${str#"$inner"\`}
-                  after=${rest%"${rest#?}"}
-                  if [ "$after" != '`' ]; then
-                    rm_code_n=$((rm_code_n + 1))
-                    eval "rm_cs$rm_code_n=$pos"
-                    eval "rm_ce$rm_code_n=$((pos + ${#inner} + 2))"
-                    eval "rm_ci$rm_code_n=\$inner"
-                    str=$rest
-                    pos=$((pos + ${#inner} + 2))
-                    prev='`'
-                    continue
-                  fi
-                  ;;
-              esac
+            # record the code span, if any, then skip past it either way
+            if rm_code_find "$ch$str"; then
+              rm_code_n=$((rm_code_n + 1))
+              eval "rm_cs$rm_code_n=$pos"
+              eval "rm_ce$rm_code_n=$((pos + rm_code_len))"
+              eval "rm_ci$rm_code_n=\$rm_code_inner"
             fi
-            pos=$((pos + 1))
-            prev=$ch
+            pos=$((pos + rm_code_len))
+            str=$rm_code_after
+            prev='`'
+            continue
             ;;
           '*' | '_' | '~')
             len=1
@@ -627,18 +660,14 @@ provide-module render-markdown %{
         fi
         case "$d" in
           '`')
-            case "$s" in
-              *\`*)
-                inner=${s%%\`*}
-                out="$out$kak_opt_render_markdown_inline_code$inner$base"
-                s=${s#*"$inner"\`}
-                prev='`'
-                ;;
-              *)
-                out="$out\`$s"
-                s=
-                ;;
-            esac
+            if rm_code_find "$d$s"; then
+              out="$out$kak_opt_render_markdown_inline_code$rm_code_inner$base"
+              s=$rm_code_after
+            else
+              out="$out$d$s"
+              s=
+            fi
+            prev='`'
             ;;
           '***' | '___' | '**' | '__' | '~~' | '*' | '_')
             case "$d" in
