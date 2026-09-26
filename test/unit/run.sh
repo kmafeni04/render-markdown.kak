@@ -54,10 +54,13 @@ export kak_opt_render_markdown_checkbox_in_progress='{y}P '
 export kak_opt_render_markdown_checkbox_cancelled='{y}X '
 export kak_opt_render_markdown_bullet='{y}B '
 export kak_opt_render_markdown_bullet_alt='{y}A '
+export kak_opt__render_markdown_bullet_head='{y}'
 export kak_opt_indentwidth=2
 export kak_opt__render_markdown_quote_starts=''
 export kak_opt_render_markdown_horizontal_rule='{r}HR'
 export kak_opt_render_markdown_blockquote='{r}Q '
+export kak_opt__render_markdown_quote_head='{r}'
+export kak_opt__render_markdown_quote_glyph='Q'
 export kak_opt_render_markdown_callout_note='{n}N'
 export kak_opt_render_markdown_callout_tip='{t}T'
 export kak_opt_render_markdown_callout_important='{m}M'
@@ -176,11 +179,13 @@ check 'ordered marker with a paren' \
   "$(run list)"
 
 export kak_opt_render_markdown_bullet='G '
+export kak_opt__render_markdown_bullet_head=''
 kak_selection='2. ' kak_selection_desc='27.1,27.3'
 check 'ordered marker without a bullet face stays unfaced' \
   "${pre}'27.1,27.3|2. '" \
   "$(run list)"
 export kak_opt_render_markdown_bullet='{y}B '
+export kak_opt__render_markdown_bullet_head='{y}'
 
 kak_selection='------' kak_selection_desc='7.1,7.7'
 check 'hrule' \
@@ -554,6 +559,14 @@ check 'align columns by display width for wide glyphs' \
 check 'rm_lang_icon uses a per-language icon' '󰢱' "$(rm_lang_icon lua)"
 check 'rm_lang_icon is case-insensitive' '󰢱' "$(rm_lang_icon Lua)"
 check 'rm_lang_icon falls back to the generic icon' 'GEN' "$(rm_lang_icon unknown)"
+
+check 'rm_marker_glyph strips the face and trailing blanks' 'Q' "$(rm_marker_glyph '{r}Q ')"
+check 'rm_marker_glyph on a plain marker' 'plain' "$(rm_marker_glyph plain)"
+check 'rm_cache_markers caches the parsed markers' \
+  "set-option global _render_markdown_quote_head '{r}'
+set-option global _render_markdown_quote_glyph 'Q'
+set-option global _render_markdown_bullet_head '{y}'" \
+  "$(rm_cache_markers)"
 
 if [ "$fails" -gt 0 ]; then
   printf '%s\n' "$(cm_red "FAIL $fails of $((passes + fails)) checks")"

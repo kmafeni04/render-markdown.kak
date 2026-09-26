@@ -19,6 +19,12 @@ provide-module render-markdown %{
   declare-option -hidden str _render_markdown_cache ''
   declare-option -hidden str _render_markdown_cache_buf ''
 
+  # parsed once per render from the "{face}glyph" marker options (see
+  # rm_cache_markers), so elements do not re-parse them
+  declare-option -hidden str _render_markdown_quote_head ''
+  declare-option -hidden str _render_markdown_quote_glyph ''
+  declare-option -hidden str _render_markdown_bullet_head ''
+
   # how many lines beyond the viewport to render and cache, so scrolling
   # inside that margin does not re-run the matchers
   declare-option int render_markdown_margin 24
@@ -178,6 +184,24 @@ provide-module render-markdown %{
         *"$cb"*) printf '%s' "${1%%$cb*}$cb" ;;
         *) printf '' ;;
       esac
+    }
+
+    # trailing glyph of a "{face}glyph" option, with trailing blanks removed
+    rm_marker_glyph() {
+      cb=$CB
+      glyph=${1##*$cb}
+      printf '%s' "${glyph%"${glyph##*[![:space:]]}"}"
+    }
+
+    # Emit the commands that cache the parsed "{face}glyph" marker options for
+    # the current render, so each quoted line or ordered item reuses them
+    # instead of re-parsing.  Run once from _render-markdown-render.
+    rm_cache_markers() {
+      quote_opt=$kak_opt_render_markdown_blockquote
+      bullet_opt=$kak_opt_render_markdown_bullet
+      printf "set-option global _render_markdown_quote_head '%s'\n" "$(rm_quote "$(rm_head "$quote_opt")")"
+      printf "set-option global _render_markdown_quote_glyph '%s'\n" "$(rm_quote "$(rm_marker_glyph "$quote_opt")")"
+      printf "set-option global _render_markdown_bullet_head '%s'\n" "$(rm_quote "$(rm_head "$bullet_opt")")"
     }
 
     # icon for a fenced code block's language string.  A small built-in map
@@ -1150,7 +1174,7 @@ provide-module render-markdown %{
               # an ordered marker is content, so it keeps its number.  Reuse
               # the bullet's face when it has one, so both kinds look alike
               # (a glyph-only bullet setting leaves the marker unfaced).
-              face=$(rm_head "$kak_opt_render_markdown_bullet")
+              face=$kak_opt__render_markdown_bullet_head
               content=$kak_selection
               ;;
             *) face=$(rm_bullet_face) ;;
@@ -1169,9 +1193,8 @@ provide-module render-markdown %{
           # record where the quote's content starts, after the markers and
           # their optional spaces, so a bullet inside the quote does not count
           # the prefix as list indentation.
-          cb=$CB # close-brace char (see the library header)
-          head=$(printf '%s' "$kak_opt_render_markdown_blockquote" | sed "s/$cb.*/$cb/")
-          glyph=$(printf '%s' "$kak_opt_render_markdown_blockquote" | sed "s/.*$cb//;s/[[:space:]]*$//")
+          head=$kak_opt__render_markdown_quote_head
+          glyph=$kak_opt__render_markdown_quote_glyph
           s=$kak_selection
           drawn=
           while [ -n "$s" ]; do
@@ -1413,6 +1436,8 @@ provide-module render-markdown %{
         # kak_opt_render_markdown_table_separator kak_opt_render_markdown_table_pipe
         # kak_opt__render_markdown_consumed_lines kak_selection
         # kak_opt__render_markdown_quote_starts
+        # kak_opt__render_markdown_quote_head kak_opt__render_markdown_quote_glyph
+        # kak_opt__render_markdown_bullet_head
         # Skip matches that start inside a non-markdown code fence (the codeblock
         # matcher ran first and recorded those spans).
         line=${kak_selection_desc%%.*}
@@ -1759,6 +1784,12 @@ provide-module render-markdown %{
     set-option global _render_markdown_fence_spans
     set-option global _render_markdown_fence_starts
     set-option global _render_markdown_fence_ends
+    # parse the marker options once per render; the classifiers read the cache
+    evaluate-commands %sh{
+      # kak_opt_render_markdown_blockquote kak_opt_render_markdown_bullet
+      eval "$kak_opt__render_markdown_sh_lib"
+      rm_cache_markers
+    }
     evaluate-commands -draft %{
       # matcher table: one command per feature, each re-selecting the render
       # range (_render-markdown-select) before its search.  Front matter runs
