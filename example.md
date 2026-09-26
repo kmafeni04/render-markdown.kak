@@ -1,3 +1,8 @@
+---
+title: render-markdown.kak example
+tags: [markdown, kakoune]
+---
+
 # Example *markdown* file
 
 A quick overview of what [render-markdown.kak](./render-markdown.kak) replaces.
@@ -11,16 +16,27 @@ Headings can contain inline formatting; the markers are replaced inline:
 ### And an ![image](assets/1.png)
 #### Closing hashes are stripped ####
 
+Setext heading level 1
+==============
+
+Setext heading level 2
+--------------
+
 ## Emphasis
 
 `inline code`, **bold**, *italic*, _also italic_, __also bold__, ~~strikethrough~~,
 and a [web link](https://kakoune.org).
 ``code with a ` backtick``
 
+<!-- hidden HTML comment: concealed by the plugin -->
+
 ## Lists
 
 * plain bullet
 * second bullet
+
+1. first ordered item
+2. second ordered item
 
 ## Checkboxes
 
@@ -39,6 +55,9 @@ and a [web link](https://kakoune.org).
 
 > Quoted line that spans
 > multiple lines
+
+> Nested quote
+> > inner quote
 
 ## Callouts
 

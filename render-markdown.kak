@@ -394,9 +394,25 @@ provide-module render-markdown %{
           n=$((n + 1))
         done
         if [ "$n" -eq "$rlen" ]; then
-          rm_code_inner=${rest%"$scan"}
+          inner=${rest%"$scan"}
           rm_code_after=$run
-          rm_code_len=$((${#rm_code_inner} + 2 * rlen))
+          rm_code_len=$((${#inner} + 2 * rlen))
+          # CommonMark drops one leading and one trailing space when the
+          # content has both and is not all spaces; the source span above is
+          # unchanged, so offsets and advance stay correct.  Tabs are not
+          # spaces, and a literal space breaks a dash bracket expression, so
+          # the blank character is tested through $sp.
+          sp=' '
+          case "$inner" in
+            *[!$sp]*)
+              if [ "${inner# }" != "$inner" ] &&
+                [ "${inner% }" != "$inner" ]; then
+                inner=${inner# }
+                inner=${inner% }
+              fi
+              ;;
+          esac
+          rm_code_inner=$inner
           return 0
         fi
         scan=$run
@@ -1022,7 +1038,7 @@ provide-module render-markdown %{
       fi
     }
 
-    # One-line window status for render-markdown-status-toggle: enabled state,
+    # One-line window status for render-markdown-status: enabled state,
     # buffer name and line count, the cached render band ("first-last") and the
     # last render timestamp.  The cache option holds "<timestamp> <first> <last>".
     rm_status() { # $1 = enabled state
@@ -1089,9 +1105,10 @@ provide-module render-markdown %{
           # heading.  The matcher finds the underline and expands the
           # selection with the paragraph text object (<a-i>p), so the
           # selection is every text line followed by the underline.  Face
-          # each text line, hide the underline, consume all of them.  The
-          # paragraph and underline must share a blockquote prefix, so
-          # "> Title" plus a bare "---" stays a quote and a rule.
+          # each text line (the first also carries the heading glyph), hide
+          # the underline, consume all of them.  The paragraph and underline
+          # must share a blockquote prefix, so "> Title" plus a bare "---"
+          # stays a quote and a rule.
           if rm_consumed; then exit 0; fi
           rm_chomp
           nl=$RM_NL
@@ -1156,7 +1173,13 @@ provide-module render-markdown %{
             =*) face=$kak_opt_render_markdown_heading_1 ;;
             *) face=$kak_opt_render_markdown_heading_2 ;;
           esac
-          face=$(rm_head "$face") # no marker to replace, so no glyph either
+          base=$(rm_head "$face")
+          # A setext heading has no marker on its text line, so the option's
+          # glyph is prefixed to the first line; later lines are indented by
+          # the glyph width plus the separator space to line up under it.
+          glyph=${face#"$base"}
+          glyph_width=$(rm_visible_width "$glyph")
+          heading_pad=$(printf '%*s' "$((glyph_width + 1))" '')
           # range columns count bytes, not characters: wc -c, whose padding
           # $(( )) normalises.  The first text row is first_row, which sits at
           # selection line + first_row - 1.
@@ -1166,7 +1189,14 @@ provide-module render-markdown %{
           while [ "$i" -le "$rows" ]; do
             eval "text=\$row$i; body=\$rowbody$i; start=\$rowstart$i"
             text_bytes=$(($(printf '%s' "$text" | wc -c)))
-            rm_emit_desc "$line.$start,$line.$text_bytes" "$face" "$(rm_inline "$body" "$face")"
+            if [ "$i" -eq "$first_row" ]; then
+              line_face=$face
+              line_prefix=' '
+            else
+              line_face=$base
+              line_prefix=$heading_pad
+            fi
+            rm_emit_desc "$line.$start,$line.$text_bytes" "$line_face" "$line_prefix$(rm_inline "$body" "$base")"
             consumed="$consumed $line"
             line=$((line + 1))
             i=$((i + 1))
@@ -1260,6 +1290,12 @@ provide-module render-markdown %{
           printf "set-option -add global _render_markdown_consumed_lines %s\n" "$(rm_line)"
           ;;
         comment)
+          # The matcher only selects a complete single-line "<!--...-->" span;
+          # guard so a stray non-comment selection conceals nothing.
+          case "$kak_selection" in
+            '<!--'*'-->') ;;
+            *) exit 0 ;;
+          esac
           # Conceal a single-line HTML comment with an empty range.  The line
           # is consumed so inline matchers cannot reveal anything inside it;
           # a line carrying a comment therefore loses inline rendering.
@@ -1768,7 +1804,7 @@ provide-module render-markdown %{
   # its line count, the cached band and the last render timestamp.  There is no
   # side-effect-free query for "is the highlighter installed", so remove it
   # (which fails while rendering is off) and put it back when it succeeded.
-  define-command render-markdown-status-toggle -docstring 'Print the current render status' %{
+  define-command render-markdown-status -docstring 'Print the current render status' %{
     try %{
       remove-highlighter window/_render_markdown_ranges
       add-highlighter window/_render_markdown_ranges replace-ranges _render_markdown_ranges

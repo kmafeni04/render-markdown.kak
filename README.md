@@ -63,6 +63,10 @@ rule-of-3 spans (`*foo**bar*`, `**bold *it* bold**`) and inline code inside
 emphasis all render as the spec says, in paragraphs as well as headings and
 table cells.
 
+Setext headings reuse the matching ATX level's face and glyph; the underline
+is concealed, and the continuation lines of a multi-line setext heading are
+indented to line up under the first line.
+
 Callouts use the type set the Git hosts agree on, matched
 case-insensitively; GitLab's optional custom title (`> [!note] Title`) is
 kept after the icon. Only the marker line is styled.
@@ -87,13 +91,17 @@ top of `render-markdown.kak`); set one to change that rendering:
 | `render_markdown_inline_code` | Inline code face |
 | `render_markdown_table_separator`, `render_markdown_table_pipe` | Table grid line and cell bars |
 
+A small built-in language table (`rm_lang_icon`) seeds icons for common
+languages (`lua`, `python`, `javascript`, `sh`, `markdown`, …); any other info
+string falls back to `render_markdown_codeblock_language_icon`.
+
 Rendering is toggled with `render-markdown-enable`, `render-markdown-disable`
 and `render-markdown-toggle`. `render_markdown_margin` (default 24) is not a
 face: it sets how many lines beyond the viewport are rendered and cached.
 `render_markdown_raw_in_insert` (default off) drops the rendered view while in
 insert mode so the raw Markdown is editable, and restores it on returning to
 normal mode.
-`render-markdown-status-toggle` prints the window's enabled state, buffer,
+`render-markdown-status` prints the window's enabled state, buffer,
 cached band and last render timestamp; `render-markdown-debug` lists the range
 descriptors on the cursor line.
 
@@ -123,7 +131,10 @@ dash test/run.sh [unit|integration|smoke|format|cache|bless|lint|all]
   (`kak -ui json`, no terminal needed) and diffs the emitted range-specs
   against committed goldens. A fixture may carry a `<fixture>.cursor` file
   naming the line to render from, which covers scrolled viewports
-- `smoke` — checks the replace-ranges highlighter really renders glyphs
+- `smoke` — checks the replace-ranges highlighter really renders glyphs,
+  that `render_markdown_raw_in_insert` drops the rendered view in insert mode,
+  and that `render-markdown-toggle`, `render-markdown-status` and
+  `render-markdown-debug` behave
 - `format` — runs `render-markdown-table-format` and checks the line after
   the table is left intact
 - `cache` — checks the margin render cache reuses ranges and re-renders after
@@ -131,7 +142,8 @@ dash test/run.sh [unit|integration|smoke|format|cache|bless|lint|all]
 - `bless` — regenerates goldens from current output (use when behaviour
   intentionally changes)
 - `lint` — shellcheck on all shell scripts, plus a plugin sanity check
-  (braces balanced, the embedded shell library parses)
+  (braces balanced, the embedded shell library parses, every public command
+  has a docstring)
 
 With no argument the runner runs `all`: every test above except `bless`.
 
@@ -161,6 +173,14 @@ intended.
 - A comment on a heading line stays visible (the heading range spans the whole
   line), and a line carrying a comment is consumed, so its other inline markup
   is not rendered
+- Callouts are recognised on any line of a blockquote, not only its first line
+  as GitHub and GitLab require; a later `> [!NOTE]` still renders
+- Backslash escaping covers only `*`, `_`, `~` and `` ` `` in the inline
+  parser; other CommonMark escapes such as `\#` stay literal, and inline
+  rendering in headings and table cells does not process escapes at all
+- With `render_markdown_raw_in_insert` on, running the toggle from insert mode
+  re-enables rendering instead of disabling it, because insert mode has already
+  removed the highlighter
 
 ## Reference
 - https://github.com/MeanderingProgrammer/render-markdown.nvim

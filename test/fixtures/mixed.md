@@ -1,5 +1,7 @@
 # A file to go through and confirm all faces are loading correctly
 
+<!-- hidden comment: mixed.md covers the newer constructs -->
+
 ## Headings
 
 # Heading 1
@@ -46,10 +48,17 @@ int main(){
 }
 ```
 
+```python
+print("a labelled fence")
+```
+
 ## Check Boxes
 
 - [x] checked
 - [ ] unchecked
+- [~] inapplicable (GitLab)
+- [/] in progress (Obsidian)
+- [-] cancelled (Obsidian)
 
 ## List Bullets
 
@@ -84,6 +93,14 @@ ______
 > > eho hello
 > > ```
 
+## Callouts
+
+> [!NOTE]
+> A note callout.
+
+> [!TIP] With a custom title
+> GitLab's optional title is kept.
+
 ## Links
 
 - ![image](test.png)
@@ -91,6 +108,7 @@ ______
 - [python file](test.py)
 - [website](https://test.com)
 - <user@test.com>
+- <https://kakoune.org>
 
 ## Text Transforms
 ~~strike~~

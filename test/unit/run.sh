@@ -287,6 +287,16 @@ check 'multi-backtick code span' \
   "${pre}'60.1,60.8|{c}code'" \
   "$(run emphasis)"
 
+kak_selection='` a `' kak_selection_desc='61.1,61.5'
+check 'code span strips one padding space' \
+  "${pre}'61.1,61.5|{c}a'" \
+  "$(run emphasis)"
+
+kak_selection='`  `' kak_selection_desc='62.1,62.4'
+check 'all-space code span keeps its padding' \
+  "${pre}'62.1,62.4|{c}  '" \
+  "$(run emphasis)"
+
 kak_selection='~~gone~~' kak_selection_desc='17.1,17.8'
 check 'strikethrough' \
   "${pre}'17.1,17.8|{s}gone'" \
@@ -319,7 +329,7 @@ export kak_opt_render_markdown_italics='{i}'
 kak_selection='Setext one
 ==========' kak_selection_desc='30.1,31.10'
 check 'setext heading level 1' \
-  "${pre}'30.1,30.10|{blue+f}Setext one'
+  "${pre}'30.1,30.10|{blue+f}G1 Setext one'
 ${pre}'31.1,31.10|'
 set-option -add global _render_markdown_consumed_lines 30 31" \
   "$(run setext)"
@@ -327,7 +337,7 @@ set-option -add global _render_markdown_consumed_lines 30 31" \
 kak_selection='Setext two
 ----------' kak_selection_desc='32.1,33.10'
 check 'setext heading level 2' \
-  "${pre}'32.1,32.10|{green+f}Setext two'
+  "${pre}'32.1,32.10|{green+f}G2 Setext two'
 ${pre}'33.1,33.10|'
 set-option -add global _render_markdown_consumed_lines 32 33" \
   "$(run setext)"
@@ -335,9 +345,9 @@ set-option -add global _render_markdown_consumed_lines 32 33" \
 kak_selection='First line
 Second line
 ===' kak_selection_desc='34.1,36.4'
-check 'multi-line setext heading faces every text line' \
-  "${pre}'34.1,34.10|{blue+f}First line'
-${pre}'35.1,35.11|{blue+f}Second line'
+check 'multi-line setext heading indents continuation lines' \
+  "${pre}'34.1,34.10|{blue+f}G1 First line'
+${pre}'35.1,35.11|{blue+f}   Second line'
 ${pre}'36.1,36.3|'
 set-option -add global _render_markdown_consumed_lines 34 35 36" \
   "$(run setext)"
@@ -371,6 +381,15 @@ title: x
 ---
 ' kak_selection_desc='5.1,7.4'
 check 'front matter away from line 1 is ignored' '' "$(run front-matter)"
+
+kak_selection='<!-- c -->' kak_selection_desc='6.1,6.10'
+check 'comment concealed and consumed' \
+  "${pre}'6.1,6.10|'
+set-option -add global _render_markdown_consumed_lines 6" \
+  "$(run comment)"
+
+kak_selection='plain text' kak_selection_desc='7.1,7.10'
+check 'comment classifier ignores a non-comment' '' "$(run comment)"
 
 kak_selection='- item
 ---' kak_selection_desc='34.1,35.3'
@@ -458,6 +477,8 @@ check 'heading bold span' '{H+b}bold{H}' "$(rm_inline '**bold**' '{H}')"
 check 'heading italic span' 'x{H+i}i{H}y' "$(rm_inline 'x*i*y' '{H}')"
 check 'heading code span' 'a {C}c{H} b' "$(rm_inline 'a `c` b' '{H}')"
 check 'heading multi-backtick code span' '{C}two{H}' "$(rm_inline '``two``' '{H}')"
+check 'heading code span strips one padding space' 'a {C}a{H} b' \
+  "$(rm_inline 'a ` a ` b' '{H}')"
 check 'heading strike span' '{H+s}g{H}' "$(rm_inline '~~g~~' '{H}')"
 check 'heading web link' 'z{W}site{H}' "$(rm_inline 'z[site](https://x)' '{H}')"
 check 'heading plain link' 'q{L}f{H}' "$(rm_inline 'q[f](rel.md)' '{H}')"

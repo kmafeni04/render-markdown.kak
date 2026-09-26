@@ -1,13 +1,13 @@
-1.1,1.14|{blue+f}Setext — one
+1.1,1.14|{blue+f}󰲡 Setext — one
 2.1,2.12|
-4.1,4.10|{green+f}Setext two
+4.1,4.10|{green+f} 󰲣 Setext two
 5.1,5.10|
-7.1,7.10|{green+f}Multi line
-8.1,8.7|{green+f}heading
+7.1,7.10|{green+f} 󰲣 Multi line
+8.1,8.7|{green+f}   heading
 9.1,9.9|
-17.3,17.16|{blue+f}Quoted heading
+17.3,17.16|{blue+f}󰲡 Quoted heading
 18.3,18.16|
-20.4,20.23|{green+f}Tight quoted heading
+20.4,20.23|{green+f} 󰲣 Tight quoted heading
 21.4,21.22|
 12.1,12.3|{rgb:3e3e3e+f}──────────────────
 15.4,15.6|{rgb:3e3e3e+f}──────────────────

@@ -19,10 +19,12 @@ glyphs='󰲣\|󰲥\|󰲧\|󰲩\|󰲫'
 work=$(mktemp -d /tmp/rmsmoke.XXXXXX)
 modework=$(mktemp -d /tmp/rmsmokemode.XXXXXX)
 togglework=$(mktemp -d /tmp/rmsmoketoggle.XXXXXX)
-trap 'rm -rf "$work" "$modework" "$togglework"' EXIT
+statuswork=$(mktemp -d /tmp/rmsmokestatus.XXXXXX)
+debugwork=$(mktemp -d /tmp/rmsmokedebug.XXXXXX)
+trap 'rm -rf "$work" "$modework" "$togglework" "$statuswork" "$debugwork"' EXIT
 
 kak_json_start "rmsmoke-$$" "$work" \
-  "source '$plugin'; edit '$fixture'; render-markdown-enable; _render-markdown-update"
+  "source '$plugin'; edit '$fixture'; render-markdown-enable; _render-markdown-update; render-markdown-status"
 sleep 1
 kak_json_key j # force a redraw so the highlighter output is emitted
 sleep 1
@@ -38,6 +40,12 @@ if ! grep -q "$glyphs" "$work/out.json"; then
 fi
 
 printf '%s\n' "$(cm_green 'ok heading glyph rendered')"
+
+if ! grep -q 'enabled=true' "$work/out.json"; then
+  printf '%s\n' "$(cm_red 'FAIL status did not report enabled=true while on')"
+  exit 1
+fi
+printf '%s\n' "$(cm_green 'ok status reports enabled=true while on')"
 
 # Opt-in raw view: entering insert mode removes the highlighter, so the draws
 # after the mode change must not contain heading glyphs.
@@ -88,3 +96,40 @@ if grep -q '^still-on$' "$togglework/state"; then
 fi
 
 printf '%s\n' "$(cm_green 'ok toggle flips rendering')"
+
+# render-markdown-status reports the enabled state, and render-markdown-debug
+# echoes the range descriptor on the cursor line.  Only the last echo is drawn
+# by the json ui, so each state runs in its own session.
+kak_json_start "rmsmokestatus-$$" "$statuswork" \
+  "source '$plugin'; edit '$fixture'; render-markdown-enable; render-markdown-disable; render-markdown-status"
+sleep 1
+kak_json_key j
+sleep 1
+kak_json_stop
+
+if ! kak_json_error "$statuswork"; then
+  printf '%s\n' "$(cm_red 'FAIL')"
+  exit 1
+fi
+if ! grep -q 'enabled=false' "$statuswork/out.json"; then
+  printf '%s\n' "$(cm_red 'FAIL status did not report enabled=false while off')"
+  exit 1
+fi
+printf '%s\n' "$(cm_green 'ok status reports enabled=false while off')"
+
+kak_json_start "rmsmokedebug-$$" "$debugwork" \
+  "source '$plugin'; edit '$fixture'; render-markdown-enable; _render-markdown-update; render-markdown-debug"
+sleep 1
+kak_json_key j
+sleep 1
+kak_json_stop
+
+if ! kak_json_error "$debugwork"; then
+  printf '%s\n' "$(cm_red 'FAIL')"
+  exit 1
+fi
+if ! grep -q '1\.1,1\.11' "$debugwork/out.json"; then
+  printf '%s\n' "$(cm_red 'FAIL debug did not list the cursor line descriptor')"
+  exit 1
+fi
+printf '%s\n' "$(cm_green 'ok debug lists the cursor line descriptor')"

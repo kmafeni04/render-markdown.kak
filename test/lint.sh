@@ -31,6 +31,16 @@ dash -n "$lib" || {
 }
 printf '%s\n' "$(cm_green 'ok plugin sanity (braces balanced, library parses)')"
 
+# Every public command (a define-command without -hidden) must carry a
+# -docstring so the command palette stays self-documenting.
+missing=$(grep 'define-command' "$plugin" | grep -v -- '-hidden' | grep -v -- '-docstring') || missing=
+if [ -n "$missing" ]; then
+  printf '%s\n' "$(cm_red 'public define-command without a -docstring:')"
+  printf '%s\n' "$missing" >&2
+  exit 1
+fi
+printf '%s\n' "$(cm_green 'ok every public command has a docstring')"
+
 command -v shellcheck >/dev/null 2>&1 || {
   printf '%s\n' "$(cm_yellow 'skip shellcheck not installed')"
   exit 0
