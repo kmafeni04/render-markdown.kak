@@ -47,6 +47,7 @@ Currently the plugin supports rendering
 - Thematic breaks (`---`, `***`, `___`, and spaced forms such as `- - -`)
 - Blockquotes
 - Callouts (`> [!NOTE]`, `> [!TIP]`, `> [!IMPORTANT]`, `> [!WARNING]`, `> [!CAUTION]`)
+- HTML comments (single-line, hidden)
 - Links
 - Strikethroughs
 - Italics
@@ -155,6 +156,11 @@ intended.
   link (`[a *b* c](url)`, `*[a](url)*`) emits overlapping ranges
 - Autolinks (`<https://example.com>`) are not matched; only inline, reference
   and mail links are
+- HTML comments are concealed only when they fit on one line; a multi-line
+  comment is left as-is
+- A comment on a heading line stays visible (the heading range spans the whole
+  line), and a line carrying a comment is consumed, so its other inline markup
+  is not rendered
 
 ## Reference
 - https://github.com/MeanderingProgrammer/render-markdown.nvim

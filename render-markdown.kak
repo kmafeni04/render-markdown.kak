@@ -1183,6 +1183,13 @@ provide-module render-markdown %{
           # the title that overlaps this one
           printf "set-option -add global _render_markdown_consumed_lines %s\n" "$(rm_line)"
           ;;
+        comment)
+          # Conceal a single-line HTML comment with an empty range.  The line
+          # is consumed so inline matchers cannot reveal anything inside it;
+          # a line carrying a comment therefore loses inline rendering.
+          rm_emit '' ''
+          printf "set-option -add global _render_markdown_consumed_lines %s\n" "$(rm_line)"
+          ;;
         table)
           # rows are consumed so inline kinds never render inside cells.
           # Separator rows (only dashes/colons between pipes) are redrawn as a
@@ -1568,6 +1575,20 @@ provide-module render-markdown %{
     }
   }
 
+  # Single-line HTML comments are hidden like GitHub does.  Multi-line
+  # comments are intentionally out of scope: replace-ranges cannot replace a
+  # range spanning lines, so a block could not be concealed as one range.  The
+  # non-greedy body keeps several comments on one line separate selections.
+  define-command -hidden _render-markdown-match-comments %{
+    evaluate-commands -draft %{
+      _render-markdown-select
+      try %{
+        execute-keys "s<lt>!--[^\n]*?--<gt><ret>"
+        _render-markdown-handle comment
+      }
+    }
+  }
+
   define-command -hidden _render-markdown-match-links %{
     evaluate-commands -draft %{
       _render-markdown-select
@@ -1688,6 +1709,9 @@ provide-module render-markdown %{
       _render-markdown-match-callouts
       _render-markdown-match-lists
       _render-markdown-match-tables
+      # comments before the inline matchers: a comment line is consumed, so
+      # links and emphasis skip it instead of revealing text inside the comment
+      _render-markdown-match-comments
       _render-markdown-match-links
       _render-markdown-match-emphasis
     }
