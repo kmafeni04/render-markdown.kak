@@ -46,6 +46,7 @@ Currently the plugin supports rendering
 - List markers (bullets, and ordered numbers kept in place)
 - Thematic breaks (`---`, `***`, `___`, and spaced forms such as `- - -`)
 - Blockquotes
+- Callouts (`> [!NOTE]`, `> [!TIP]`, `> [!IMPORTANT]`, `> [!WARNING]`, `> [!CAUTION]`)
 - Links
 - Strikethroughs
 - Italics
@@ -61,6 +62,10 @@ rule-of-3 spans (`*foo**bar*`, `**bold *it* bold**`) and inline code inside
 emphasis all render as the spec says, in paragraphs as well as headings and
 table cells.
 
+Callouts use the type set the Git hosts agree on, matched
+case-insensitively; GitLab's optional custom title (`> [!note] Title`) is
+kept after the icon. Only the marker line is styled.
+
 ## Customisation
 
 Every face and marker glyph is a `render_markdown_*` option (defaults at the
@@ -74,6 +79,7 @@ top of `render-markdown.kak`); set one to change that rendering:
 | `render_markdown_bullet`, `render_markdown_bullet_alt` | Unordered bullet markers, cycled by nesting depth (`indentwidth` steps, blockquote prefixes ignored); ordered numbers reuse the first's face |
 | `render_markdown_horizontal_rule` | Thematic break line |
 | `render_markdown_blockquote` | Blockquote marker |
+| `render_markdown_callout_note`, `render_markdown_callout_tip`, `render_markdown_callout_important`, `render_markdown_callout_warning`, `render_markdown_callout_caution` | Callout icons (the `> [!TYPE]` marker) |
 | `render_markdown_link_image`, `render_markdown_link_web`, `render_markdown_link_link`, `render_markdown_link_mail` | Image, web, relative/reference and mail link prefixes |
 | `render_markdown_strikethrough`, `render_markdown_italics`, `render_markdown_bold` | Inline text faces |
 | `render_markdown_inline_code` | Inline code face |

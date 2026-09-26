@@ -55,6 +55,11 @@ export kak_opt_indentwidth=2
 export kak_opt__render_markdown_quote_starts=''
 export kak_opt_render_markdown_horizontal_rule='{r}HR'
 export kak_opt_render_markdown_blockquote='{r}Q '
+export kak_opt_render_markdown_callout_note='{n}N'
+export kak_opt_render_markdown_callout_tip='{t}T'
+export kak_opt_render_markdown_callout_important='{m}M'
+export kak_opt_render_markdown_callout_warning='{w}W'
+export kak_opt_render_markdown_callout_caution='{c}C'
 export kak_opt_render_markdown_link_image='{b}I '
 export kak_opt_render_markdown_link_web='{b}W '
 export kak_opt_render_markdown_link_link='{b}L '
@@ -163,6 +168,27 @@ check 'blockquote nested run' \
   "set-option -add global _render_markdown_quote_starts 10:3
 ${pre}'10.1,10.2|{r}QQ'" \
   "$(run blockquote)"
+
+kak_selection='[!NOTE] Title' kak_selection_desc='5.3,5.15'
+check 'callout note with a title' \
+  "${pre}'5.3,5.15|{n}N Title'
+set-option -add global _render_markdown_consumed_lines 5" \
+  "$(run callout)"
+
+kak_selection='[!NoTe]' kak_selection_desc='6.3,6.9'
+check 'callout type is case-insensitive and title optional' \
+  "${pre}'6.3,6.9|{n}N'
+set-option -add global _render_markdown_consumed_lines 6" \
+  "$(run callout)"
+
+kak_selection='[!tip] hi' kak_selection_desc='7.3,7.11'
+check 'callout tip keeps the title separator' \
+  "${pre}'7.3,7.11|{t}T hi'
+set-option -add global _render_markdown_consumed_lines 7" \
+  "$(run callout)"
+
+kak_selection='[!nope] x' kak_selection_desc='8.3,8.11'
+check 'unknown callout type stays literal' '' "$(run callout)"
 
 kak_selection='[site](https://x)' kak_selection_desc='9.1,9.20'
 check 'web link' \

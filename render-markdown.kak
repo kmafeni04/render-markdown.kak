@@ -43,6 +43,14 @@ provide-module render-markdown %{
 
   declare-option str render_markdown_blockquote "{rgb:3e3e3e+f}▋ "
 
+  # Callout icons for the type set shared by GitHub, GitLab and
+  # Forgejo/Gitea; types are matched case-insensitively (see the classifier).
+  declare-option str render_markdown_callout_note "{blue+f}󰋽"
+  declare-option str render_markdown_callout_tip "{green+f}󰌶"
+  declare-option str render_markdown_callout_important "{magenta+f}󰅾"
+  declare-option str render_markdown_callout_warning "{yellow+f}󰀦"
+  declare-option str render_markdown_callout_caution "{red+f}󰳦"
+
   declare-option str render_markdown_link_image "{blue+fu@Default} "
   declare-option str render_markdown_link_web "{blue+fu@Default}󰖟 "
   declare-option str render_markdown_link_link "{blue+fu@Default} "
@@ -1105,6 +1113,38 @@ provide-module render-markdown %{
           printf "set-option -add global _render_markdown_quote_starts %s:%s\n" "$(rm_line)" "$content"
           rm_emit "$head" "$drawn"
           ;;
+        callout)
+          # A Git-host callout: the blockquote matcher already drew the '>'
+          # markers, so this range covers only the "[!TYPE]" token and the
+          # optional title after it.  The type is case-insensitive and only
+          # the set all three hosts agree on is recognised; anything else is
+          # left literal so a stray "[!FOO]" is not silently replaced.
+          case "$kak_selection" in
+            '[!'*']'*) ;;
+            *) exit 0 ;;
+          esac
+          tok=${kak_selection%%]*}
+          # GitLab's optional custom title starts after the "]"; keep the
+          # separating space so the rendered line reads "icon Title"
+          title=${kak_selection#*]}
+          type=$(printf '%s' "${tok#\[!}" | tr '[:upper:]' '[:lower:]')
+          case "$type" in
+            note) opt=$kak_opt_render_markdown_callout_note ;;
+            tip) opt=$kak_opt_render_markdown_callout_tip ;;
+            important) opt=$kak_opt_render_markdown_callout_important ;;
+            warning) opt=$kak_opt_render_markdown_callout_warning ;;
+            caution) opt=$kak_opt_render_markdown_callout_caution ;;
+            *) exit 0 ;;
+          esac
+          # the option is "{face}glyph": rm_head gives the face, the trailing
+          # text after the closing brace is the glyph
+          face=$(rm_head "$opt")
+          glyph=${opt#*"$CB"}
+          rm_emit "$face" "$glyph$title"
+          # consume the line so inline matchers cannot emit a range inside
+          # the title that overlaps this one
+          printf "set-option -add global _render_markdown_consumed_lines %s\n" "$(rm_line)"
+          ;;
         table)
           # rows are consumed so inline kinds never render inside cells.
           # Separator rows (only dashes/colons between pipes) are redrawn as a
@@ -1273,6 +1313,9 @@ provide-module render-markdown %{
         # kak_opt_indentwidth
         # kak_opt_render_markdown_horizontal_rule
         # kak_opt_render_markdown_blockquote kak_opt_render_markdown_link_image
+        # kak_opt_render_markdown_callout_note kak_opt_render_markdown_callout_tip
+        # kak_opt_render_markdown_callout_important kak_opt_render_markdown_callout_warning
+        # kak_opt_render_markdown_callout_caution
         # kak_opt_render_markdown_link_web kak_opt_render_markdown_link_link
         # kak_opt_render_markdown_link_mail kak_opt_render_markdown_strikethrough
         # kak_opt_render_markdown_italics kak_opt_render_markdown_bold
@@ -1437,6 +1480,20 @@ provide-module render-markdown %{
     }
   }
 
+  # Callouts run after blockquotes (the '>' markers are already drawn) and
+  # only match a "[!TYPE]" token that starts the quote's content, so one that
+  # follows other text is left alone.  `\K` keeps the '>' prefix out of the
+  # range the classifier replaces.
+  define-command -hidden _render-markdown-match-callouts %{
+    evaluate-commands -draft %{
+      _render-markdown-select
+      try %{
+        execute-keys "s^\h*(?:>\h?)+\K\[![A-Za-z]+\][^\n]*<ret>"
+        _render-markdown-handle callout
+      }
+    }
+  }
+
   define-command -hidden _render-markdown-match-tables %{
     evaluate-commands -draft %{
       _render-markdown-select
@@ -1564,6 +1621,7 @@ provide-module render-markdown %{
       # quote's content starts, so a bullet inside it excludes the '>'
       # prefix from its nesting depth
       _render-markdown-match-blockquotes
+      _render-markdown-match-callouts
       _render-markdown-match-lists
       _render-markdown-match-tables
       _render-markdown-match-links

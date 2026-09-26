@@ -32,6 +32,26 @@ and a [web link](https://kakoune.org).
 > Quoted line that spans
 > multiple lines
 
+## Callouts
+
+> [!NOTE]
+> The type marker is replaced by an icon.
+
+> [!TIP] With a custom title
+> GitLab's optional title is kept after the icon.
+
+> [!IMPORTANT]
+> The type set is shared by GitHub, GitLab and Forgejo/Gitea.
+
+> [!WARNING]
+> Types are matched case-insensitively.
+
+> [!CAUTION]
+> Only the marker line is styled; the body stays plain.
+
+> [!UNKNOWN]
+> An unrecognised type stays literal.
+
 ## Links
 
 - ![example image](./assets/1.png)
