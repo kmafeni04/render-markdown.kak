@@ -1060,10 +1060,10 @@ provide-module render-markdown %{
           printf "set-option -add global _render_markdown_consumed_lines %s\n" "$(rm_line)"
           ;;
         blockquote)
-          # replace the leading '>' run with one glyph per '>' (whitespace is
-          # kept): '> ' -> '▋ ', '>text' -> '▋text', '>> t' -> '▋▋ t'.  Also
-          # record where the quote's content starts, after the '>' run and its
-          # single optional space, so a bullet inside the quote does not count
+          # replace each leading '>' with one glyph, keeping whitespace:
+          # '> t' -> '▋ t', '>text' -> '▋text', '> > t' -> '▋ ▋ t'.  Also
+          # record where the quote's content starts, after the markers and
+          # their optional spaces, so a bullet inside the quote does not count
           # the prefix as list indentation.
           cb=$CB # close-brace char (see the library header)
           head=$(printf '%s' "$kak_opt_render_markdown_blockquote" | sed "s/$cb.*/$cb/")
@@ -1393,7 +1393,7 @@ provide-module render-markdown %{
     evaluate-commands -draft %{
       _render-markdown-select
       try %{
-        execute-keys "s^\h*>?\h*>*([-*+]\h\[[xX<space>]\]|[-*+]\h|[0-9]{1,9}[.)]\h)<ret>s([-*+]\h\[[xX<space>]\]|[-*+]\h|[0-9]{1,9}[.)]\h)<ret>_L"
+        execute-keys "s^\h*(?:>\h?)*\h*([-*+]\h\[[xX<space>]\]|[-*+]\h|[0-9]{1,9}[.)]\h)<ret>s([-*+]\h\[[xX<space>]\]|[-*+]\h|[0-9]{1,9}[.)]\h)<ret>_L"
         _render-markdown-handle list
       }
     }
@@ -1413,7 +1413,7 @@ provide-module render-markdown %{
     evaluate-commands -draft %{
       _render-markdown-select
       try %{
-        execute-keys "s^\h*<gt>+\h*<ret>"
+        execute-keys "s^\h*(?:<gt>\h?)+<ret>"
         _render-markdown-handle blockquote
       }
     }

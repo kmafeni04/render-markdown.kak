@@ -14,3 +14,8 @@
 > - quoted bullet
 >   - quoted nested
 > - quoted bullet
+
+>> - tight quote bullet
+>>   - tight quote nested
+> > - spaced quote bullet
+> >   - spaced quote nested
