@@ -61,10 +61,12 @@ if ! grep -q 'enabled=true' "$work/out.json"; then
 fi
 printf '%s\n' "$(cm_green 'ok status reports enabled=true while on')"
 
-# Opt-in raw view: entering insert mode removes the highlighter, so the draws
-# after the mode change must not contain heading glyphs.
+# Raw view in insert mode is the default: entering insert removes the
+# highlighter so the buffer shows raw markdown.  A mode change only emits a
+# draw_status, so register a probe hook (after the plugin's raw-insert hook)
+# that asks render-markdown-status whether the highlighter is installed.
 start_session mode "$modework" \
-  "source '$plugin'; set-option global render_markdown_raw_in_insert true; edit '$fixture'; render-markdown-enable; _render-markdown-update"
+  "source '$plugin'; edit '$fixture'; render-markdown-enable; hook -group rm-smoke window ModeChange 'push:.*:insert' 'render-markdown-status'; _render-markdown-update"
 if ! grep -q "$glyphs" "$modework/out.json"; then
   printf '%s\n' "$(cm_red 'FAIL heading glyph not rendered before insert')"
   exit 1
@@ -74,8 +76,8 @@ kak_json_key i # enter insert mode: the ModeChange hook drops the highlighter
 sleep 1
 stop_session "$modework"
 tail -c +"$((mark + 1))" "$modework/out.json" >"$modework/after.json"
-if grep -q "$glyphs" "$modework/after.json"; then
-  printf '%s\n' "$(cm_red 'FAIL heading glyph still rendered in insert mode')"
+if ! grep -q 'enabled=false' "$modework/after.json"; then
+  printf '%s\n' "$(cm_red 'FAIL highlighter still installed in insert mode')"
   exit 1
 fi
 

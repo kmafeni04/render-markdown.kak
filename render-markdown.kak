@@ -29,9 +29,10 @@ provide-module render-markdown %{
   # inside that margin does not re-run the matchers
   declare-option int render_markdown_margin 24
 
-  # when true, insert mode drops the rendered view so the raw markdown is
-  # editable without replacement ranges shifting under the cursor
-  declare-option bool render_markdown_raw_in_insert false
+  # insert mode drops the rendered view so the raw markdown is editable
+  # without replacement ranges shifting under the cursor; set false to keep
+  # rendering while editing
+  declare-option bool render_markdown_raw_in_insert true
 
   declare-option str render_markdown_heading_1 "{blue+f}󰲡"
   declare-option str render_markdown_heading_2 "{green+f} 󰲣"

@@ -98,7 +98,7 @@ string falls back to `render_markdown_codeblock_language_icon`.
 Rendering is toggled with `render-markdown-enable`, `render-markdown-disable`
 and `render-markdown-toggle`. `render_markdown_margin` (default 24) is not a
 face: it sets how many lines beyond the viewport are rendered and cached.
-`render_markdown_raw_in_insert` (default off) drops the rendered view while in
+`render_markdown_raw_in_insert` (default on) drops the rendered view while in
 insert mode so the raw Markdown is editable, and restores it on returning to
 normal mode.
 `render-markdown-status` prints the window's enabled state, buffer,
@@ -178,9 +178,9 @@ intended.
 - Backslash escaping covers only `*`, `_`, `~` and `` ` `` in the inline
   parser; other CommonMark escapes such as `\#` stay literal, and inline
   rendering in headings and table cells does not process escapes at all
-- With `render_markdown_raw_in_insert` on, running the toggle from insert mode
-  re-enables rendering instead of disabling it, because insert mode has already
-  removed the highlighter
+- While `render_markdown_raw_in_insert` is on (the default), running the
+  toggle from insert mode re-enables rendering instead of disabling it,
+  because insert mode has already removed the highlighter
 
 ## Reference
 - https://github.com/MeanderingProgrammer/render-markdown.nvim
