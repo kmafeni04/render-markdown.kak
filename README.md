@@ -90,6 +90,9 @@ top of `render-markdown.kak`); set one to change that rendering:
 Rendering is toggled with `render-markdown-enable`, `render-markdown-disable`
 and `render-markdown-toggle`. `render_markdown_margin` (default 24) is not a
 face: it sets how many lines beyond the viewport are rendered and cached.
+`render_markdown_raw_in_insert` (default off) drops the rendered view while in
+insert mode so the raw Markdown is editable, and restores it on returning to
+normal mode.
 
 ## Table commands
 

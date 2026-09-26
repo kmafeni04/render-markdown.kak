@@ -23,6 +23,10 @@ provide-module render-markdown %{
   # inside that margin does not re-run the matchers
   declare-option int render_markdown_margin 24
 
+  # when true, insert mode drops the rendered view so the raw markdown is
+  # editable without replacement ranges shifting under the cursor
+  declare-option bool render_markdown_raw_in_insert false
+
   declare-option str render_markdown_heading_1 "{blue+f}󰲡"
   declare-option str render_markdown_heading_2 "{green+f} 󰲣"
   declare-option str render_markdown_heading_3 "{yellow+f}  󰲥"
@@ -1622,16 +1626,36 @@ provide-module render-markdown %{
     }
   }
 
+  define-command -hidden _render-markdown-raw-insert %{
+    evaluate-commands %sh{
+      # opted in: drop the highlighter so insert mode shows the raw markdown
+      case "$kak_opt_render_markdown_raw_in_insert" in
+        true) printf '%s\n' 'try %{ remove-highlighter window/_render_markdown_ranges }' ;;
+      esac
+    }
+  }
+
+  define-command -hidden _render-markdown-raw-normal %{
+    evaluate-commands %sh{
+      case "$kak_opt_render_markdown_raw_in_insert" in
+        true) printf '%s\n' 'try %{ add-highlighter window/_render_markdown_ranges replace-ranges _render_markdown_ranges }' ;;
+      esac
+    }
+  }
+
   define-command render-markdown-enable %{
     set-option window _render_markdown_cache ''
     set-option window _render_markdown_cache_buf ''
     hook -group render-markdown-update window NormalIdle .* _render-markdown-update
+    hook -group render-markdown-modes window ModeChange 'push:.*:insert' _render-markdown-raw-insert
+    hook -group render-markdown-modes window ModeChange 'pop:insert:.*' _render-markdown-raw-normal
     add-highlighter window/_render_markdown_ranges replace-ranges _render_markdown_ranges
   }
 
   define-command render-markdown-disable %{
     remove-highlighter window/_render_markdown_ranges
     remove-hooks window render-markdown-update
+    remove-hooks window render-markdown-modes
   }
 
   define-command render-markdown-toggle %{
