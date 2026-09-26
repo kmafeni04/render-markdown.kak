@@ -146,8 +146,6 @@ intended.
 - Setext headings need the underline in the same container as the paragraph:
   a quote paragraph above a bare `---` stays a quote plus a rule, and a list
   item directly above `---` stays a list plus a rule
-- An ATX heading's optional closing sequence (`## Heading ##`) is kept in the
-  rendered text instead of being stripped
 - Backtick fences longer than six backticks are not supported: the opening and
   closing runs must be the same length, and only lengths three through six are
   matched

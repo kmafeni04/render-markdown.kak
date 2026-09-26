@@ -9,6 +9,7 @@ Headings can contain inline formatting; the markers are replaced inline:
 # Heading with **bold** and *italic*
 ## With `code` and a [link](https://example.com)
 ### And an ![image](assets/1.png)
+#### Closing hashes are stripped ####
 
 ## Emphasis
 

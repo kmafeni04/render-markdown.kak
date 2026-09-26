@@ -1007,6 +1007,11 @@ provide-module render-markdown %{
           if [ "$level" -gt 6 ]; then exit 0; fi
           eval "face=\$kak_opt_render_markdown_heading_$level"
           content=${kak_selection#"$marks"}
+          # CommonMark's optional closing sequence: a trailing run of #s
+          # preceded by whitespace (and followed only by whitespace) is not part
+          # of the heading.  "foo#" and the escaped "foo \###" keep their hashes
+          # because whitespace does not immediately precede the run.
+          content=$(printf '%s' "$content" | sed 's/[[:space:]]\{1,\}#\{1,\}[[:space:]]*$//')
           rm_emit "$face" "$(rm_inline "$content" "$(rm_head "$face")")"
           # the whole heading line is consumed; inline kinds must not match inside it
           printf "set-option -add global _render_markdown_consumed_lines %s\n" "$(rm_line)"

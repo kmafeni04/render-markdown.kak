@@ -91,6 +91,24 @@ set-option -add global _render_markdown_consumed_lines 2" \
 kak_selection='####### Too deep' kak_selection_desc='3.1,3.19'
 check 'heading >6 emits nothing' '' "$(run heading)"
 
+kak_selection='## Two ##' kak_selection_desc='3.1,3.9'
+check 'heading strips a closing sequence' \
+  "${pre}'3.1,3.9|{green+f}G2 Two'
+set-option -add global _render_markdown_consumed_lines 3" \
+  "$(run heading)"
+
+kak_selection='# foo#' kak_selection_desc='4.1,4.6'
+check 'heading keeps a hash with no preceding space' \
+  "${pre}'4.1,4.6|{blue+f}G1 foo#'
+set-option -add global _render_markdown_consumed_lines 4" \
+  "$(run heading)"
+
+kak_selection='# foo \###' kak_selection_desc='5.1,5.10'
+check 'heading keeps an escaped closing run' \
+  "${pre}'5.1,5.10|{blue+f}G1 foo \\\###'
+set-option -add global _render_markdown_consumed_lines 5" \
+  "$(run heading)"
+
 kak_selection='- [x] done' kak_selection_desc='4.1,4.10'
 check 'checkbox checked' \
   "${pre}'4.1,4.10|{y}C '" \
