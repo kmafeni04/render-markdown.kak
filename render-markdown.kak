@@ -955,11 +955,11 @@ provide-module render-markdown %{
           printf "set-option -add global _render_markdown_consumed_lines%s\n" "$consumed"
           ;;
         heading)
-          level=$(printf '%s' "$kak_selection" | grep -o '^#*' | wc -c)
-          level=$((level - 1))
+          marks=${kak_selection%%[^#]*}
+          level=${#marks}
           if [ "$level" -gt 6 ]; then exit 0; fi
           eval "face=\$kak_opt_render_markdown_heading_$level"
-          content=$(printf '%s' "$kak_selection" | sed -e 's/^#*//' -e "s/'/''/g")
+          content=${kak_selection#"$marks"}
           rm_emit "$face" "$(rm_inline "$content" "$(rm_head "$face")")"
           # the whole heading line is consumed; inline kinds must not match inside it
           printf "set-option -add global _render_markdown_consumed_lines %s\n" "$(rm_line)"
@@ -1175,17 +1175,17 @@ provide-module render-markdown %{
           ;;
         link)
           if rm_consumed; then exit 0; fi
-          content=$(printf '%s' "$kak_selection" | sed -e 's/^!//' -e 's/^\[//' -e 's/\]\(.*\)$//' -e 's/\]\[.*$//' -e "s/'/''/g")
+          content=$(printf '%s' "$kak_selection" | sed -e 's/^!//' -e 's/^\[//' -e 's/\]\(.*\)$//')
           case "$kak_selection" in
             !*) face=$kak_opt_render_markdown_link_image ;;
-            *http*) face=$kak_opt_render_markdown_link_web ;;
+            *"]("*http*) face=$kak_opt_render_markdown_link_web ;;
             *) face=$kak_opt_render_markdown_link_link ;;
           esac
           rm_emit "$face" "$content"
           ;;
         link-mail)
           if rm_consumed; then exit 0; fi
-          content=$(printf '%s' "$kak_selection" | sed -e 's/^<//' -e 's/>$//' -e "s/'/''/g")
+          content=$(printf '%s' "$kak_selection" | sed -e 's/^<//' -e 's/>$//')
           rm_emit "$kak_opt_render_markdown_link_mail" "$content"
           ;;
         emphasis)

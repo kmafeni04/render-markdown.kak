@@ -2,6 +2,7 @@
 set -eu
 cd "$(dirname "$0")" || true
 . ./color.sh
+. ./extract-lib.sh
 
 plugin=../render-markdown.kak
 
@@ -23,9 +24,7 @@ fi
 
 lib=$(mktemp) || exit 1
 trap 'rm -f "$lib"' EXIT HUP INT TERM
-start=$(grep -n 'declare-option -hidden str _render_markdown_sh_lib' "$plugin" | cut -d: -f1)
-end=$(awk -v s="$start" 'NR > s && /^  }$/ { print NR; exit }' "$plugin")
-sed -n "$((start + 1)),$((end - 1))p" "$plugin" >"$lib"
+extract_sh_lib "$plugin" "$lib"
 dash -n "$lib" || {
   printf '%s\n' "$(cm_red 'shell syntax error in the embedded library')"
   exit 1

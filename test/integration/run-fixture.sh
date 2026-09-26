@@ -1,7 +1,8 @@
 #!/usr/bin/env sh
 # usage: run-fixture.sh <plugin> <fixture> <dumpfile> [cursor-line]
 # Runs one fixture in a headless kakoune (json ui) and captures the emitted
-# range-specs to <dumpfile>.
+# range-specs to <dumpfile>.  Without a cursor-line argument, a
+# <fixture>.cursor file next to the fixture is used when present.
 set -eu
 cd "$(dirname "$0")/../.." # repo root
 # shellcheck disable=SC1091  # sourced helpers are linted separately
@@ -12,7 +13,11 @@ cd "$(dirname "$0")/../.." # repo root
 plugin=$1
 fixture=$2
 dump=$3
-cursor=${4:-1}
+cursor=${4:-}
+if [ -z "$cursor" ] && [ -f "${fixture%.md}.cursor" ]; then
+  cursor=$(cat "${fixture%.md}.cursor")
+fi
+cursor=${cursor:-1}
 
 work=$(mktemp -d /tmp/rmtest.XXXXXX) || exit 1
 trap 'rm -rf "$work"' EXIT HUP INT TERM

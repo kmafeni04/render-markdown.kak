@@ -7,15 +7,15 @@ set -eu
 cd "$(dirname "$0")/../.." # repo root
 # shellcheck disable=SC1091  # color.sh is linted separately
 . test/color.sh
+# shellcheck disable=SC1091  # extract-lib.sh is linted separately
+. test/extract-lib.sh
 
 plugin=render-markdown.kak
 lib=$(mktemp /tmp/rmshlib.XXXXXX) || exit 1
 trap 'rm -f "$lib"' EXIT
 
 # extract the shell library (the %{...} option body)
-start=$(grep -n 'declare-option -hidden str _render_markdown_sh_lib' "$plugin" | cut -d: -f1)
-end=$(awk -v s="$start" 'NR>s && /^  }$/{print NR; exit}' "$plugin")
-sed -n "$((start + 1)),$((end - 1))p" "$plugin" >"$lib"
+extract_sh_lib "$plugin" "$lib"
 [ -s "$lib" ] || {
   echo 'unit: could not extract shell lib'
   exit 1
@@ -70,6 +70,12 @@ export kak_opt__render_markdown_consumed_lines=''
 
 check 'heading level 2' \
   "${pre}'2.1,2.8|{green+f}G2 Two'
+set-option -add global _render_markdown_consumed_lines 2" \
+  "$(run heading)"
+
+kak_selection="## a'b" kak_selection_desc='2.1,2.6'
+check 'heading content escapes a quote once' \
+  "${pre}'2.1,2.6|{green+f}G2 a''b'
 set-option -add global _render_markdown_consumed_lines 2" \
   "$(run heading)"
 
@@ -163,6 +169,11 @@ check 'web link' \
   "${pre}'9.1,9.20|{b}W site'" \
   "$(run link)"
 
+kak_selection='[http docs](rel.md)' kak_selection_desc='9.1,9.20'
+check 'link whose label mentions http stays a relative link' \
+  "${pre}'9.1,9.20|{b}L http docs'" \
+  "$(run link)"
+
 kak_selection='![img](a.png)' kak_selection_desc='10.1,10.16'
 check 'image link' \
   "${pre}'10.1,10.16|{b}I img'" \
@@ -178,9 +189,19 @@ check 'link content escapes pipe' \
   "${pre}'12.1,12.10|{b}L a\\|b'" \
   "$(run link)"
 
+kak_selection="[a'b](x)" kak_selection_desc='12.1,12.8'
+check 'link content escapes a quote once' \
+  "${pre}'12.1,12.8|{b}L a''b'" \
+  "$(run link)"
+
 kak_selection='<u@h.c>' kak_selection_desc='13.1,13.8'
 check 'mail link' \
   "${pre}'13.1,13.8|{b}M u@h.c'" \
+  "$(run link-mail)"
+
+kak_selection="<a'b@c.d>" kak_selection_desc='13.1,13.10'
+check 'mail link content escapes a quote once' \
+  "${pre}'13.1,13.10|{b}M a''b@c.d'" \
   "$(run link-mail)"
 
 kak_selection='`code`' kak_selection_desc='16.1,16.6'

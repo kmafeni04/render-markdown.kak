@@ -20,7 +20,7 @@ and a [web link](https://kakoune.org).
 - [x] checked task
 - [ ] unchecked task
 * plain bullet
-* nested bullet
+* second bullet
 
 ## Horizontal rules
 

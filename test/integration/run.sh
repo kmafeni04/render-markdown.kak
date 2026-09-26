@@ -20,11 +20,7 @@ for f in test/fixtures/*.md; do
     exit 1
   fi
   dump=$(mktemp /tmp/rmdump.XXXXXX) || exit 1
-  if [ -f "${f%.md}.cursor" ]; then
-    ./test/integration/run-fixture.sh "$plugin" "$f" "$dump" "$(cat "${f%.md}.cursor")"
-  else
-    ./test/integration/run-fixture.sh "$plugin" "$f" "$dump"
-  fi
+  ./test/integration/run-fixture.sh "$plugin" "$f" "$dump"
   if ! diff -u "$g" "$dump"; then
     printf '%s\n' "$(cm_red "FAIL ${f##*/}")"
     rm -f "$dump"

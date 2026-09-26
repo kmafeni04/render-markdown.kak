@@ -132,9 +132,9 @@ intended.
 - YAML front matter is recognised by a heuristic (a leading `---` line with a
   closing `---` before the first blank line), not by the CommonMark spec;
   without the closing delimiter the block is left as ordinary Markdown
-- Setext headings are recognised for the paragraph immediately above the
-  underline; a list item or blockquote line directly above `---` stays a list
-  or quote plus a rule
+- Setext headings need the underline in the same container as the paragraph:
+  a quote paragraph above a bare `---` stays a quote plus a rule, and a list
+  item directly above `---` stays a list plus a rule
 - An ATX heading's optional closing sequence (`## Heading ##`) is kept in the
   rendered text instead of being stripped
 - Backtick fences longer than six backticks are not supported: the opening and
