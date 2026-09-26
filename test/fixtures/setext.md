@@ -13,3 +13,12 @@ heading
 
 > indented quote
    ---
+
+> Quoted heading
+> ==============
+
+>> Tight quoted heading
+>> -------------------
+
+> Quoted paragraph
+---

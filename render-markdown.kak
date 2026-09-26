@@ -130,6 +130,16 @@ provide-module render-markdown %{
       printf '%s' "$kak_selection_desc" | sed 's/\..*//'
     }
 
+    # split a line into its leading whitespace ($rm_indent), blockquote
+    # prefix ($rm_qprefix, '>' markers each with an optional space) and the
+    # remaining text ($rm_body)
+    rm_line_split() {
+      rm_parts=$(printf '%s' "$1" | sed -n 's/^\([[:space:]]*\)\(\(>[[:space:]]\{0,1\}\)*\).*/\1|\2/p')
+      rm_indent=${rm_parts%%|*}
+      rm_qprefix=${rm_parts#*|}
+      rm_body=${1#"$rm_indent$rm_qprefix"}
+    }
+
     # true when the current selection's line is heading-consumed
     rm_consumed() {
       case " $kak_opt__render_markdown_consumed_lines " in
@@ -958,7 +968,9 @@ provide-module render-markdown %{
           # heading.  The matcher finds the underline and expands the
           # selection with the paragraph text object (<a-i>p), so the
           # selection is every text line followed by the underline.  Face
-          # each text line, hide the underline, consume all of them.
+          # each text line, hide the underline, consume all of them.  The
+          # paragraph and underline must share a blockquote prefix, so
+          # "> Title" plus a bare "---" stays a quote and a rule.
           if rm_consumed; then exit 0; fi
           rm_chomp
           nl=$RM_NL
@@ -968,6 +980,10 @@ provide-module render-markdown %{
           esac
           underline=${s##*$nl}
           text=${s%$nl*}
+          rm_line_split "$underline"
+          uprefix=$rm_qprefix
+          ubody=$(printf '%s' "$rm_body" | sed 's/^[[:space:]]*//')
+          ustart=$((${#rm_indent} + ${#rm_qprefix} + 1))
           # Split the text into lines, then take the longest suffix of plain
           # paragraph lines immediately before the underline.  A block
           # construct (heading, quote, list marker, fence, thematic break)
@@ -995,9 +1011,11 @@ provide-module render-markdown %{
           i=$rows
           while [ "$i" -ge 1 ]; do
             eval "line=\$row$i"
-            stripped=$(printf '%s' "$line" | sed 's/^[[:space:]]*//')
+            rm_line_split "$line"
+            stripped=$(printf '%s' "$rm_body" | sed 's/^[[:space:]]*//')
             first=$(printf '%.1s' "$stripped")
             ok=1
+            [ "$rm_qprefix" = "$uprefix" ] || ok=0
             case "$stripped" in
               '') ok=0 ;;         # blank line ends the paragraph
               *[!_[:space:]]*) ;; # has real content
@@ -1012,7 +1030,7 @@ provide-module render-markdown %{
           done
           # no plain paragraph line directly above the underline: not a setext
           [ "$first_row" -le "$rows" ] || exit 0
-          case "$underline" in
+          case "$ubody" in
             =*) face=$kak_opt_render_markdown_heading_1 ;;
             *) face=$kak_opt_render_markdown_heading_2 ;;
           esac
@@ -1025,14 +1043,16 @@ provide-module render-markdown %{
           i=$first_row
           while [ "$i" -le "$rows" ]; do
             eval "text=\$row$i"
+            rm_line_split "$text"
             text_bytes=$(($(printf '%s' "$text" | wc -c)))
-            rm_emit_desc "$line.1,$line.$text_bytes" "$face" "$(rm_inline "$text" "$face")"
+            start=$((${#rm_indent} + ${#rm_qprefix} + 1))
+            rm_emit_desc "$line.$start,$line.$text_bytes" "$face" "$(rm_inline "$rm_body" "$face")"
             consumed="$consumed $line"
             line=$((line + 1))
             i=$((i + 1))
           done
           underline_bytes=$(($(printf '%s' "$underline" | wc -c)))
-          rm_emit_desc "$line.1,$line.$underline_bytes" ''
+          rm_emit_desc "$line.$ustart,$line.$underline_bytes" ''
           consumed="$consumed $line"
           printf "set-option -add global _render_markdown_consumed_lines%s\n" "$consumed"
           ;;
@@ -1324,7 +1344,7 @@ provide-module render-markdown %{
     evaluate-commands -draft %{
       _render-markdown-select
       try %{
-        execute-keys "s^\h*(=+|-+)\h*$<ret>"
+        execute-keys "s^\h*(?:>\h?)*\h*(=+|-+)\h*$<ret>"
         execute-keys "<a-i>p"
         _render-markdown-handle setext
       }
