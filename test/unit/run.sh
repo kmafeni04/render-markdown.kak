@@ -581,9 +581,12 @@ check 'rm_width counts wide and zero-width characters' \
 check 'rm_escape_markup escapes opening braces and backslashes' \
   '\{a}\\b' "$(rm_escape_markup '{a}\b')"
 
-check 'rm_strip_markup reverses faces and brace escapes' \
+check 'rm_strip_markup strips face markup and undoes brace escapes' \
   ' type Name = {K: V} ' \
   "$(rm_strip_markup ' {cyan}type Name = \{K: V}{} ')"
+
+check 'rm_strip_markup collapses a doubled backslash' \
+  'a\b' "$(rm_strip_markup '{cyan}a\\b{}')"
 
 check 'align columns by display width for wide glyphs' \
   "| 名前 | age |
