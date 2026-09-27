@@ -1094,7 +1094,7 @@ provide-module render-markdown %{
           # A leading YAML front matter block is hidden and consumed, so its
           # opening/closing "---" never renders as a rule or setext underline.
           # The matcher only produces line-1 matches; guard anyway.
-          [ "$(rm_line)" -eq 1 ] || exit 0
+          [ "$(rm_line)" -eq 1 ] || return 0
           rm_chomp
           nl=$RM_NL
           line=1
@@ -1122,7 +1122,7 @@ provide-module render-markdown %{
         heading)
           marks=${kak_selection%%[^#]*}
           level=${#marks}
-          if [ "$level" -gt 6 ]; then exit 0; fi
+          if [ "$level" -gt 6 ]; then return 0; fi
           eval "face=\$kak_opt_render_markdown_heading_$level"
           content=${kak_selection#"$marks"}
           # CommonMark's optional closing sequence: a trailing run of #s
@@ -1143,12 +1143,12 @@ provide-module render-markdown %{
           # the underline, consume all of them.  The paragraph and underline
           # must share a blockquote prefix, so "> Title" plus a bare "---"
           # stays a quote and a rule.
-          if rm_consumed; then exit 0; fi
+          if rm_consumed; then return 0; fi
           rm_chomp
           nl=$RM_NL
           case "$s" in
             *"$nl"*) ;; # need at least one text line plus the underline
-            *) exit 0 ;;
+            *) return 0 ;;
           esac
           underline=${s##*$nl}
           text=${s%$nl*}
@@ -1202,7 +1202,7 @@ provide-module render-markdown %{
             i=$((i - 1))
           done
           # no plain paragraph line directly above the underline: not a setext
-          [ "$first_row" -le "$rows" ] || exit 0
+          [ "$first_row" -le "$rows" ] || return 0
           case "$ubody" in
             =*) face=$kak_opt_render_markdown_heading_1 ;;
             *) face=$kak_opt_render_markdown_heading_2 ;;
@@ -1241,7 +1241,7 @@ provide-module render-markdown %{
           printf "set-option -add global _render_markdown_consumed_lines%s\n" "$consumed"
           ;;
         list)
-          if rm_consumed; then exit 0; fi
+          if rm_consumed; then return 0; fi
           content=
           case "$kak_selection" in
             [-*+]*\[[xX]\]*) face=$kak_opt_render_markdown_checkbox_checked ;;
@@ -1261,7 +1261,7 @@ provide-module render-markdown %{
           rm_emit "$face" "$content"
           ;;
         hrule)
-          if rm_consumed; then exit 0; fi
+          if rm_consumed; then return 0; fi
           rm_emit "$kak_opt_render_markdown_horizontal_rule" ''
           # the rule line is consumed: emphasis markers inside it must not match
           printf "set-option -add global _render_markdown_consumed_lines %s\n" "$(rm_line)"
@@ -1299,7 +1299,7 @@ provide-module render-markdown %{
           # left literal so a stray "[!FOO]" is not silently replaced.
           case "$kak_selection" in
             '[!'*']'*) ;;
-            *) exit 0 ;;
+            *) return 0 ;;
           esac
           tok=${kak_selection%%]*}
           # GitLab's optional custom title starts after the "]"; keep the
@@ -1312,7 +1312,7 @@ provide-module render-markdown %{
             important) opt=$kak_opt_render_markdown_callout_important ;;
             warning) opt=$kak_opt_render_markdown_callout_warning ;;
             caution) opt=$kak_opt_render_markdown_callout_caution ;;
-            *) exit 0 ;;
+            *) return 0 ;;
           esac
           # the option is "{face}glyph": rm_head gives the face, the trailing
           # text after the closing brace is the glyph
@@ -1328,7 +1328,7 @@ provide-module render-markdown %{
           # guard so a stray non-comment selection conceals nothing.
           case "$kak_selection" in
             '<!--'*'-->') ;;
-            *) exit 0 ;;
+            *) return 0 ;;
           esac
           # Conceal a single-line HTML comment with an empty range.  The line
           # is consumed so inline matchers cannot reveal anything inside it;
@@ -1405,7 +1405,7 @@ provide-module render-markdown %{
           printf "set-option -add global _render_markdown_consumed_lines %s\n" "$line"
           ;;
         link)
-          if rm_consumed; then exit 0; fi
+          if rm_consumed; then return 0; fi
           content=$(printf '%s' "$kak_selection" | sed -e 's/^!//' -e 's/^\[//' -e 's/\]\(.*\)$//')
           case "$kak_selection" in
             !*) face=$kak_opt_render_markdown_link_image ;;
@@ -1415,7 +1415,7 @@ provide-module render-markdown %{
           rm_emit "$face" "$content"
           ;;
         link-mail | link-autolink)
-          if rm_consumed; then exit 0; fi
+          if rm_consumed; then return 0; fi
           content=$(printf '%s' "$kak_selection" | sed -e 's/^<//' -e 's/>$//')
           # the two kinds differ only in the prefix face
           case "$kind" in
@@ -1425,7 +1425,7 @@ provide-module render-markdown %{
           rm_emit "$face" "$content"
           ;;
         emphasis)
-          if rm_consumed; then exit 0; fi
+          if rm_consumed; then return 0; fi
           line=$(rm_line)
           txt=$kak_selection
           rm_emphasis_parse "$txt"
@@ -1496,58 +1496,79 @@ provide-module render-markdown %{
   # code fence, then classify + emit. $1 = classification kind.
   define-command -hidden _render-markdown-handle -params 1 %{
     set-option global _render_markdown_kind %arg{1}
-    evaluate-commands -itersel %{
-      evaluate-commands %sh{
-        # Load-bearing: Kakoune only exports an option to %sh if its name is
-        # referenced here (the classifier reads them from the environment), so
-        # deleting a name silently disables that feature.
-        # kak_opt_render_markdown_heading_1 kak_opt_render_markdown_heading_2
-        # kak_opt_render_markdown_heading_3 kak_opt_render_markdown_heading_4
-        # kak_opt_render_markdown_heading_5 kak_opt_render_markdown_heading_6
-        # kak_opt_render_markdown_checkbox_checked kak_opt_render_markdown_checkbox_unchecked
-        # kak_opt_render_markdown_checkbox_inapplicable kak_opt_render_markdown_checkbox_in_progress
-        # kak_opt_render_markdown_checkbox_cancelled
-        # kak_opt_render_markdown_bullet kak_opt_render_markdown_bullet_alt
-        # kak_opt_indentwidth
-        # kak_opt_render_markdown_horizontal_rule
-        # kak_opt_render_markdown_blockquote kak_opt_render_markdown_link_image
-        # kak_opt_render_markdown_callout_note kak_opt_render_markdown_callout_tip
-        # kak_opt_render_markdown_callout_important kak_opt_render_markdown_callout_warning
-        # kak_opt_render_markdown_callout_caution
-        # kak_opt_render_markdown_link_web kak_opt_render_markdown_link_link
-        # kak_opt_render_markdown_link_mail kak_opt_render_markdown_strikethrough
-        # kak_opt_render_markdown_italics kak_opt_render_markdown_bold
-        # kak_opt_render_markdown_inline_code kak_opt__render_markdown_debug_file
-        # kak_opt_render_markdown_table_separator kak_opt_render_markdown_table_pipe
-        # kak_opt__render_markdown_consumed_lines kak_selection
-        # kak_opt__render_markdown_quote_starts
-        # kak_opt__render_markdown_quote_head kak_opt__render_markdown_quote_glyph
-        # kak_opt__render_markdown_bullet_head
-        # Skip matches that start inside a non-markdown code fence (the codeblock
-        # matcher ran first and recorded those spans).
-        line=${kak_selection_desc%%.*}
-        col=${kak_selection_desc#*.}
-        col=${col%%,*}
-        for span in $kak_opt__render_markdown_fence_spans; do
-          start=${span%%,*}
-          end=${span##*,}
-          start_line=${start%%.*}
-          start_col=${start#*.}
-          end_line=${end%%.*}
-          if [ "$line" -ge "$start_line" ] && [ "$line" -le "$end_line" ] &&
-            [ "$col" -ge "$start_col" ]; then
-            exit 0
-          fi
+    evaluate-commands %sh{
+      # Load-bearing: Kakoune only exports an option to %sh if its name is
+      # referenced here (the classifier reads them from the environment), so
+      # deleting a name silently disables that feature.
+      # kak_opt_render_markdown_heading_1 kak_opt_render_markdown_heading_2
+      # kak_opt_render_markdown_heading_3 kak_opt_render_markdown_heading_4
+      # kak_opt_render_markdown_heading_5 kak_opt_render_markdown_heading_6
+      # kak_opt_render_markdown_checkbox_checked kak_opt_render_markdown_checkbox_unchecked
+      # kak_opt_render_markdown_checkbox_inapplicable kak_opt_render_markdown_checkbox_in_progress
+      # kak_opt_render_markdown_checkbox_cancelled
+      # kak_opt_render_markdown_bullet kak_opt_render_markdown_bullet_alt
+      # kak_opt_indentwidth
+      # kak_opt_render_markdown_horizontal_rule
+      # kak_opt_render_markdown_blockquote kak_opt_render_markdown_link_image
+      # kak_opt_render_markdown_callout_note kak_opt_render_markdown_callout_tip
+      # kak_opt_render_markdown_callout_important kak_opt_render_markdown_callout_warning
+      # kak_opt_render_markdown_callout_caution
+      # kak_opt_render_markdown_link_web kak_opt_render_markdown_link_link
+      # kak_opt_render_markdown_link_mail kak_opt_render_markdown_strikethrough
+      # kak_opt_render_markdown_italics kak_opt_render_markdown_bold
+      # kak_opt_render_markdown_inline_code kak_opt__render_markdown_debug_file
+      # kak_opt_render_markdown_table_separator kak_opt_render_markdown_table_pipe
+      # kak_opt__render_markdown_consumed_lines kak_selection
+      # kak_opt__render_markdown_quote_starts
+      # kak_opt__render_markdown_quote_head kak_opt__render_markdown_quote_glyph
+      # kak_opt__render_markdown_bullet_head
+      # kak_quoted_selections kak_selections_desc
+      # Skip matches that start inside a non-markdown code fence (the codeblock
+      # matcher ran first and recorded those spans).  Classify every selection
+      # in this one shell: %sh runs once per invocation with all selections
+      # available, so the 50 KB library is parsed once per matcher pass rather
+      # than once per match.  %val{selections} is positional while
+      # %val{selections_desc} is main-first, so sort the descriptors into the
+      # same positional order before pairing them with the contents.
+      eval set -- "$kak_quoted_selections"
+      descs=$(printf '%s\n' $kak_selections_desc | sort -t. -k1,1n -k2,2n | tr '\n' ' ')
+      # Range columns are byte offsets, but the shell indexes strings by
+      # character under a UTF-8 locale, so every offset after a multi-byte
+      # character drifts.  Re-exec the classifier under the C locale, where
+      # the byte-oriented library is correct (see rm_width, rm_strip_markup);
+      # dash caches the locale it starts with.
+      exec env LC_ALL=C sh -c '
+        eval "$1"
+        kind=$2
+        descs=$3
+        shift 3
+        for desc in $descs; do
+          content=$1
+          shift
+          line=${desc%%.*}
+          col=${desc#*.}
+          col=${col%%,*}
+          skip=
+          for span in $kak_opt__render_markdown_fence_spans; do
+            start=${span%%,*}
+            end=${span##*,}
+            start_line=${start%%.*}
+            start_col=${start#*.}
+            end_line=${end%%.*}
+            if [ "$line" -ge "$start_line" ] && [ "$line" -le "$end_line" ] &&
+              [ "$col" -ge "$start_col" ]; then
+              skip=1
+              break
+            fi
+          done
+          [ -n "$skip" ] && continue
+          kak_selection=$content
+          kak_selection_desc=$desc
+          render_markdown_classify "$kind"
         done
-        # Range columns are byte offsets, but the shell indexes strings by
-        # character under a UTF-8 locale, so every offset after a multi-byte
-        # character drifts.  Re-exec the classifier under the C locale, where
-        # the byte-oriented library is correct (see rm_width, rm_strip_markup);
-        # dash caches the locale it starts with.
-        exec env LC_ALL=C sh -c 'eval "$1"; render_markdown_classify "$2"' _ \
-          "$kak_opt__render_markdown_sh_lib" \
-          "$kak_opt__render_markdown_kind"
-      }
+      ' _ "$kak_opt__render_markdown_sh_lib" \
+        "$kak_opt__render_markdown_kind" \
+        "$descs" "$@"
     }
   }
 
@@ -1784,7 +1805,9 @@ provide-module render-markdown %{
     evaluate-commands -draft %{
       _render-markdown-select
       try %{
-        execute-keys "s^[^\n]+$<ret>"
+        # Only lines containing an emphasis/code marker can emit a range;
+        # skipping the rest avoids classifying plain lines.
+        execute-keys "s^[^\n]*[*_~`][^\n]*$<ret>"
         _render-markdown-handle emphasis
       }
     }
