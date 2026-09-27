@@ -1,0 +1,10 @@
+1.5,1.12|{+b@Default}bold
+2.11,2.18|{+i@Default}italic
+3.5,3.14|{+s@Default}strike
+4.5,4.10|{cyan,rgb:3e3e3e+f}code
+5.1,5.7|{cyan,rgb:3e3e3e+f}café
+6.1,6.17|{+b@Default}bold — dash
+7.5,7.12|{+b@Default}bold
+7.19,7.26|{+i@Default}italic
+8.8,8.15|{+b@Default}bold
+8.21,8.26|{cyan,rgb:3e3e3e+f}code

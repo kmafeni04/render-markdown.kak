@@ -1539,8 +1539,14 @@ provide-module render-markdown %{
             exit 0
           fi
         done
-        eval "$kak_opt__render_markdown_sh_lib"
-        render_markdown_classify "$kak_opt__render_markdown_kind"
+        # Range columns are byte offsets, but the shell indexes strings by
+        # character under a UTF-8 locale, so every offset after a multi-byte
+        # character drifts.  Re-exec the classifier under the C locale, where
+        # the byte-oriented library is correct (see rm_width, rm_strip_markup);
+        # dash caches the locale it starts with.
+        exec env LC_ALL=C sh -c 'eval "$1"; render_markdown_classify "$2"' _ \
+          "$kak_opt__render_markdown_sh_lib" \
+          "$kak_opt__render_markdown_kind"
       }
     }
   }
