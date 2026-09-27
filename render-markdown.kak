@@ -153,6 +153,25 @@ provide-module render-markdown %{
       printf '%s' "$out"
     }
 
+    # Escape literal text for Kakoune face markup: the opening brace starts a
+    # face spec, so a literal opening brace is backslash-escaped; a literal
+    # backslash is doubled and a closing brace needs no escape.  Range-spec
+    # escaping is separate (see rm_escape).
+    rm_escape_markup() {
+      s=$1
+      out=
+      while [ -n "$s" ]; do
+        c=${s%"${s#?}"} # first character of $s
+        s=${s#?}
+        case "$c" in
+          \\) out="$out\\\\" ;;
+          "$OB") out="$out\\$OB" ;;
+          *) out="$out$c" ;;
+        esac
+      done
+      printf '%s' "$out"
+    }
+
     # start line of the current selection descriptor (a.b,c.d -> a)
     rm_line() {
       printf '%s' "${kak_selection_desc%%.*}"
@@ -413,7 +432,7 @@ provide-module render-markdown %{
               fi
               ;;
           esac
-          rm_code_inner=$inner
+          rm_code_inner=$(rm_escape_markup "$inner")
           return 0
         fi
         scan=$run
@@ -881,10 +900,38 @@ provide-module render-markdown %{
       '
     }
 
-    # Visible display width of face-marked text: drop the {...} face specs
-    # (they are not drawn) before measuring.
+    # Plain text behind face markup: drop the face specs, turn an escaped
+    # opening brace back into a literal brace, and collapse doubled
+    # backslashes.  Measuring this keeps a literal brace from being mistaken
+    # for a face spec.
+    rm_strip_markup() {
+      printf '%s' "$1" | LC_ALL=C awk -v ob="$OB" -v cb="$CB" '{
+        s = $0
+        out = ""
+        i = 1
+        n = length(s)
+        while (i <= n) {
+          c = substr(s, i, 1)
+          if (c == "\\") {
+            d = substr(s, i + 1, 1)
+            if (d == "\\" || d == ob) { out = out d; i += 2; continue }
+            out = out c; i += 1; continue
+          }
+          if (c == ob) {
+            j = i + 1
+            while (j <= n && substr(s, j, 1) != cb) j += 1
+            if (j <= n) { i = j + 1; continue }
+            out = out c; i += 1; continue
+          }
+          out = out c; i += 1
+        }
+        print out
+      }'
+    }
+
+    # Visible display width of face-marked text: strip markup, then measure.
     rm_visible_width() {
-      rm_width "$(printf '%s' "$1" | sed "s/$OB[^$CB]*$CB//g")"
+      rm_width "$(rm_strip_markup "$1")"
     }
 
     render_markdown_table_align() {

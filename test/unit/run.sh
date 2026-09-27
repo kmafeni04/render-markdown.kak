@@ -297,6 +297,11 @@ check 'all-space code span keeps its padding' \
   "${pre}'62.1,62.4|{c}  '" \
   "$(run emphasis)"
 
+kak_selection='`{a}`' kak_selection_desc='63.1,63.5'
+check 'code span escapes a literal brace' \
+  "${pre}'63.1,63.5|{c}\\\\{a}'" \
+  "$(run emphasis)"
+
 kak_selection='~~gone~~' kak_selection_desc='17.1,17.8'
 check 'strikethrough' \
   "${pre}'17.1,17.8|{s}gone'" \
@@ -479,6 +484,8 @@ check 'heading code span' 'a {C}c{H} b' "$(rm_inline 'a `c` b' '{H}')"
 check 'heading multi-backtick code span' '{C}two{H}' "$(rm_inline '``two``' '{H}')"
 check 'heading code span strips one padding space' 'a {C}a{H} b' \
   "$(rm_inline 'a ` a ` b' '{H}')"
+check 'heading code span escapes a literal brace' 'a {C}\{b}{H}c' \
+  "$(rm_inline 'a `{b}`c' '{H}')"
 check 'heading strike span' '{H+s}g{H}' "$(rm_inline '~~g~~' '{H}')"
 check 'heading web link' 'z{W}site{H}' "$(rm_inline 'z[site](https://x)' '{H}')"
 check 'heading plain link' 'q{L}f{H}' "$(rm_inline 'q[f](rel.md)' '{H}')"
@@ -570,6 +577,13 @@ check 'align separator min three dashes' \
 check 'rm_width counts wide and zero-width characters' \
   '3 6 2 4 1' \
   "$(rm_width abc) $(rm_width 日本語) $(rm_width 😀) $(rm_width a日b) $(rm_width "e$(printf '\314\201')")"
+
+check 'rm_escape_markup escapes opening braces and backslashes' \
+  '\{a}\\b' "$(rm_escape_markup '{a}\b')"
+
+check 'rm_strip_markup reverses faces and brace escapes' \
+  ' type Name = {K: V} ' \
+  "$(rm_strip_markup ' {cyan}type Name = \{K: V}{} ')"
 
 check 'align columns by display width for wide glyphs' \
   "| 名前 | age |

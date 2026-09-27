@@ -5,3 +5,6 @@
 | **bold** | [link](y) |
 | -------- | --------- |
 | c | d |
+| code | note |
+| ---- | ---- |
+| `type Name = {K: V}` | braces |

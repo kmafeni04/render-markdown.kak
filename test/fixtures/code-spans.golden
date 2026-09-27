@@ -5,3 +5,5 @@
 5.1,5.6|{cyan,rgb:3e3e3e+f}a``b
 6.1,6.5|{cyan,rgb:3e3e3e+f}a
 7.1,7.4|{cyan,rgb:3e3e3e+f}  
+8.1,8.10|{cyan,rgb:3e3e3e+f}\\{"k": 1}
+9.1,9.5|{cyan,rgb:3e3e3e+f}a\\\\b
