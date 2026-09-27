@@ -181,6 +181,27 @@ provide-module render-markdown %{
       esac
     }
 
+    # true when the current selection starts inside a recorded code fence; the
+    # codeblock matcher records the spans before the other matchers run
+    rm_in_fence() {
+      rm_fence_line=${kak_selection_desc%%.*}
+      rm_fence_col=${kak_selection_desc#*.}
+      rm_fence_col=${rm_fence_col%%,*}
+      for rm_fence_span in $kak_opt__render_markdown_fence_spans; do
+        rm_fence_start=${rm_fence_span%%,*}
+        rm_fence_start_line=${rm_fence_start%%.*}
+        rm_fence_start_col=${rm_fence_start#*.}
+        rm_fence_end_line=${rm_fence_span##*,}
+        rm_fence_end_line=${rm_fence_end_line%%.*}
+        if [ "$rm_fence_line" -ge "$rm_fence_start_line" ] &&
+          [ "$rm_fence_line" -le "$rm_fence_end_line" ] &&
+          [ "$rm_fence_col" -ge "$rm_fence_start_col" ]; then
+          return 0
+        fi
+      done
+      return 1
+    }
+
     # face markup from a face option like {blue+f}󰲡 -> {blue+f}; the
     # close-brace char is built from octal (see the library header)
     rm_head() {
@@ -1519,6 +1540,7 @@ provide-module render-markdown %{
       # kak_opt_render_markdown_inline_code kak_opt__render_markdown_debug_file
       # kak_opt_render_markdown_table_separator kak_opt_render_markdown_table_pipe
       # kak_opt__render_markdown_consumed_lines kak_selection
+      # kak_opt__render_markdown_fence_spans
       # kak_opt__render_markdown_quote_starts
       # kak_opt__render_markdown_quote_head kak_opt__render_markdown_quote_glyph
       # kak_opt__render_markdown_bullet_head
@@ -1544,26 +1566,8 @@ provide-module render-markdown %{
         for desc in $descs; do
           kak_selection=$1
           shift
-          line=${desc%%.*}
-          col=${desc#*.}
-          col=${col%%,*}
-          # Skip matches that start inside a non-markdown code fence (the
-          # codeblock matcher ran first and recorded those spans).
-          skip=
-          for span in $kak_opt__render_markdown_fence_spans; do
-            start=${span%%,*}
-            end=${span##*,}
-            start_line=${start%%.*}
-            start_col=${start#*.}
-            end_line=${end%%.*}
-            if [ "$line" -ge "$start_line" ] && [ "$line" -le "$end_line" ] &&
-              [ "$col" -ge "$start_col" ]; then
-              skip=1
-              break
-            fi
-          done
-          [ -n "$skip" ] && continue
           kak_selection_desc=$desc
+          rm_in_fence && continue
           render_markdown_classify "$kind"
         done
       ' _ "$kak_opt__render_markdown_sh_lib" \
