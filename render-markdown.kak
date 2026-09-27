@@ -184,7 +184,7 @@ provide-module render-markdown %{
     # true when the current selection starts inside a recorded code fence; the
     # codeblock matcher records the spans before the other matchers run
     rm_in_fence() {
-      rm_fence_line=${kak_selection_desc%%.*}
+      rm_fence_line=$(rm_line)
       rm_fence_col=${kak_selection_desc#*.}
       rm_fence_col=${rm_fence_col%%,*}
       for rm_fence_span in $kak_opt__render_markdown_fence_spans; do
