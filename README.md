@@ -168,6 +168,10 @@ intended.
   contains emphasis is left-aligned rather than preserving interior spacing
 - Links are matched separately from emphasis, so emphasis inside or around a
   link (`[a *b* c](url)`, `*[a](url)*`) emits overlapping ranges
+- Emphasis and inline code are matched within a single line, so a span that
+  opens on one line and closes on the next (CommonMark allows a soft line
+  break inside both) is left literal; links and images are matched across
+  lines
 - HTML comments are concealed only when they fit on one line; a multi-line
   comment is left as-is
 - A comment on a heading line stays visible (the heading range spans the whole
