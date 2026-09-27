@@ -1523,15 +1523,14 @@ provide-module render-markdown %{
       # kak_opt__render_markdown_quote_head kak_opt__render_markdown_quote_glyph
       # kak_opt__render_markdown_bullet_head
       # kak_quoted_selections kak_selections_desc
-      # Skip matches that start inside a non-markdown code fence (the codeblock
-      # matcher ran first and recorded those spans).  Classify every selection
-      # in this one shell: %sh runs once per invocation with all selections
-      # available, so the 50 KB library is parsed once per matcher pass rather
-      # than once per match.  %val{selections} is positional while
-      # %val{selections_desc} is main-first, so sort the descriptors into the
-      # same positional order before pairing them with the contents.
+      # Classify every selection in this one shell: %sh runs once per
+      # invocation with all selections available, so the 50 KB library is
+      # parsed once per matcher pass rather than once per match.
+      # %val{selections} is positional while %val{selections_desc} is
+      # main-first, so sort the descriptors into the same positional order
+      # before pairing them with the contents.
       eval set -- "$kak_quoted_selections"
-      descs=$(printf '%s\n' $kak_selections_desc | sort -t. -k1,1n -k2,2n | tr '\n' ' ')
+      descs=$(printf '%s\n' $kak_selections_desc | sort -t. -k1,1n -k2,2n)
       # Range columns are byte offsets, but the shell indexes strings by
       # character under a UTF-8 locale, so every offset after a multi-byte
       # character drifts.  Re-exec the classifier under the C locale, where
@@ -1543,11 +1542,13 @@ provide-module render-markdown %{
         descs=$3
         shift 3
         for desc in $descs; do
-          content=$1
+          kak_selection=$1
           shift
           line=${desc%%.*}
           col=${desc#*.}
           col=${col%%,*}
+          # Skip matches that start inside a non-markdown code fence (the
+          # codeblock matcher ran first and recorded those spans).
           skip=
           for span in $kak_opt__render_markdown_fence_spans; do
             start=${span%%,*}
@@ -1562,7 +1563,6 @@ provide-module render-markdown %{
             fi
           done
           [ -n "$skip" ] && continue
-          kak_selection=$content
           kak_selection_desc=$desc
           render_markdown_classify "$kind"
         done
