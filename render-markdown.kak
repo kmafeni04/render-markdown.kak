@@ -131,41 +131,26 @@ provide-module render-markdown %{
     }
 
     rm_emit_desc() {
-      range="$1|$(rm_escape "$2$3")"
+      range="$1|$(rm_escape "$2$3" '|')"
       printf "set-option -add window _render_markdown_bare_ranges '%s'\n" "$(rm_quote "$range")"
       if [ -n "$kak_opt__render_markdown_debug_file" ]; then
         printf '%s\n' "$range" >>"$kak_opt__render_markdown_debug_file"
       fi
     }
 
-    rm_escape() {
+    # Escape a string for a Kakoune option value: a backslash is doubled and
+    # the character in $2 is backslash-escaped.  Range-spec strings escape
+    # "|"; face markup escapes the opening brace, which starts a face spec.
+    rm_escape() { # $1 = text, $2 = character to escape
       s=$1
+      esc=$2
       out=
       while [ -n "$s" ]; do
         c=${s%"${s#?}"} # first character of $s
         s=${s#?}
         case "$c" in
           \\) out="$out\\\\" ;;
-          '|') out="$out\\|" ;;
-          *) out="$out$c" ;;
-        esac
-      done
-      printf '%s' "$out"
-    }
-
-    # Escape literal text for Kakoune face markup: the opening brace starts a
-    # face spec, so a literal opening brace is backslash-escaped; a literal
-    # backslash is doubled and a closing brace needs no escape.  Range-spec
-    # escaping is separate (see rm_escape).
-    rm_escape_markup() {
-      s=$1
-      out=
-      while [ -n "$s" ]; do
-        c=${s%"${s#?}"} # first character of $s
-        s=${s#?}
-        case "$c" in
-          \\) out="$out\\\\" ;;
-          "$OB") out="$out\\$OB" ;;
+          "$esc") out="$out\\$esc" ;;
           *) out="$out$c" ;;
         esac
       done
@@ -387,9 +372,10 @@ provide-module render-markdown %{
     # Locate the code span that starts at the first character of $1 (a run of
     # backticks).  A span closes at the next backtick run of exactly the same
     # length (CommonMark); a run of another length is content.  Sets
-    # rm_code_len (total span length), rm_code_inner (content) and rm_code_after
-    # (text after the span).  Returns 1 when there is no closer, in which case
-    # rm_code_len is just the opening run and the span is literal.
+    # rm_code_len (total span length), rm_code_inner (content, escaped for
+    # face markup) and rm_code_after (text after the span).  Returns 1 when
+    # there is no closer, in which case rm_code_len is just the opening run
+    # and the span is literal.
     rm_code_find() {
       text=$1
       rest=${text#?}
@@ -432,7 +418,7 @@ provide-module render-markdown %{
               fi
               ;;
           esac
-          rm_code_inner=$(rm_escape_markup "$inner")
+          rm_code_inner=$(rm_escape "$inner" "$OB")
           return 0
         fi
         scan=$run
@@ -1679,8 +1665,8 @@ provide-module render-markdown %{
             done
           }
           # the face is the same for every fence, so escape it once
-          start_face=$(rm_escape "$kak_opt_render_markdown_codeblock_start")
-          end_face=$(rm_escape "$kak_opt_render_markdown_codeblock_end")
+          start_face=$(rm_escape "$kak_opt_render_markdown_codeblock_start" '|')
+          end_face=$(rm_escape "$kak_opt_render_markdown_codeblock_end" '|')
           emit_fence_ranges "$kak_opt__render_markdown_fence_starts" "$start_face"
           emit_fence_ranges "$kak_opt__render_markdown_fence_ends" "$end_face"
         }

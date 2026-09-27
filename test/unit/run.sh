@@ -578,8 +578,8 @@ check 'rm_width counts wide and zero-width characters' \
   '3 6 2 4 1' \
   "$(rm_width abc) $(rm_width 日本語) $(rm_width 😀) $(rm_width a日b) $(rm_width "e$(printf '\314\201')")"
 
-check 'rm_escape_markup escapes opening braces and backslashes' \
-  '\{a}\\b' "$(rm_escape_markup '{a}\b')"
+check 'rm_escape escapes an opening brace and backslashes' \
+  '\{a}\\b' "$(rm_escape '{a}\b' "$OB")"
 
 check 'rm_strip_markup strips face markup and undoes brace escapes' \
   ' type Name = {K: V} ' \
