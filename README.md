@@ -61,7 +61,8 @@ Emphasis follows CommonMark: `*` may emphasize inside a word (`a*b*c`) but
 the flanking rules and the rule of 3. Mismatched runs (`___x_`), nested and
 rule-of-3 spans (`*foo**bar*`, `**bold *it* bold**`) and inline code inside
 emphasis all render as the spec says, in paragraphs as well as headings and
-table cells.
+table cells. A span may cross a soft line break (`**bold` on one line and
+`text**` on the next), including inside a blockquote or a list item.
 
 Setext headings reuse the matching ATX level's face and glyph; the underline
 is concealed, and the continuation lines of a multi-line setext heading are
@@ -168,10 +169,6 @@ intended.
   contains emphasis is left-aligned rather than preserving interior spacing
 - Links are matched separately from emphasis, so emphasis inside or around a
   link (`[a *b* c](url)`, `*[a](url)*`) emits overlapping ranges
-- Emphasis and inline code are matched within a single line, so a span that
-  opens on one line and closes on the next (CommonMark allows a soft line
-  break inside both) is left literal; links and images are matched across
-  lines
 - HTML comments are concealed only when they fit on one line; a multi-line
   comment is left as-is
 - A comment on a heading line stays visible (the heading range spans the whole

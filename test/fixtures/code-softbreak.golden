@@ -1,0 +1,9 @@
+1.1,1.5|{cyan,rgb:3e3e3e+f}code
+2.1,2.5|{cyan,rgb:3e3e3e+f}text
+4.1,4.7|{cyan,rgb:3e3e3e+f}multi
+5.1,5.10|{cyan,rgb:3e3e3e+f}backtick
+7.3,7.7|{cyan,rgb:3e3e3e+f}one
+7.13,7.16|{cyan,rgb:3e3e3e+f}two
+8.1,8.6|{cyan,rgb:3e3e3e+f}lines
+10.1,10.22|{+i@Default}emphasis with a {cyan,rgb:3e3e3e+f}code
+11.1,11.13|{cyan,rgb:3e3e3e+f}span{+i@Default} inside

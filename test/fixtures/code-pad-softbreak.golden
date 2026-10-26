@@ -1,0 +1,4 @@
+1.1,1.6|{cyan,rgb:3e3e3e+f}code
+2.1,2.6|{cyan,rgb:3e3e3e+f}text
+4.1,4.14|{+i@Default}italic {cyan,rgb:3e3e3e+f}code
+5.1,5.14|{cyan,rgb:3e3e3e+f}text{+i@Default} inside

@@ -181,25 +181,30 @@ provide-module render-markdown %{
       esac
     }
 
-    # true when the current selection starts inside a recorded code fence; the
+    # true when line $1 at column $2 is inside a recorded code fence; the
     # codeblock matcher records the spans before the other matchers run
-    rm_in_fence() {
-      rm_fence_line=$(rm_line)
-      rm_fence_col=${kak_selection_desc#*.}
-      rm_fence_col=${rm_fence_col%%,*}
+    rm_in_fence_at() {
       for rm_fence_span in $kak_opt__render_markdown_fence_spans; do
         rm_fence_start=${rm_fence_span%%,*}
         rm_fence_start_line=${rm_fence_start%%.*}
         rm_fence_start_col=${rm_fence_start#*.}
         rm_fence_end_line=${rm_fence_span##*,}
         rm_fence_end_line=${rm_fence_end_line%%.*}
-        if [ "$rm_fence_line" -ge "$rm_fence_start_line" ] &&
-          [ "$rm_fence_line" -le "$rm_fence_end_line" ] &&
-          [ "$rm_fence_col" -ge "$rm_fence_start_col" ]; then
+        if [ "$1" -ge "$rm_fence_start_line" ] &&
+          [ "$1" -le "$rm_fence_end_line" ] &&
+          [ "$2" -ge "$rm_fence_start_col" ]; then
           return 0
         fi
       done
       return 1
+    }
+
+    # true when the current selection starts inside a recorded code fence
+    rm_in_fence() {
+      rm_fence_line=$(rm_line)
+      rm_fence_col=${kak_selection_desc#*.}
+      rm_fence_col=${rm_fence_col%%,*}
+      rm_in_fence_at "$rm_fence_line" "$rm_fence_col"
     }
 
     # face markup from a face option like {blue+f}󰲡 -> {blue+f}; the
@@ -424,22 +429,37 @@ provide-module render-markdown %{
           inner=${rest%"$scan"}
           rm_code_after=$run
           rm_code_len=$((${#inner} + 2 * rlen))
-          # CommonMark drops one leading and one trailing space when the
-          # content has both and is not all spaces; the source span above is
-          # unchanged, so offsets and advance stay correct.  Tabs are not
-          # spaces, and a literal space breaks a dash bracket expression, so
-          # the blank character is tested through $sp.
+          # CommonMark converts line endings to spaces, then drops one
+          # leading and one trailing space when the content has both and is
+          # not all spaces (tabs are not spaces).  A crossing span carries its
+          # line ending in $inner, so the edges are tested against a space or
+          # a line ending; the newline byte itself is never rendered, so only
+          # the flags and the trimmed content bounds matter.  The source span
+          # above is unchanged, so offsets and advance stay correct.
           sp=' '
-          case "$inner" in
-            *[!$sp]*)
-              if [ "${inner# }" != "$inner" ] &&
-                [ "${inner% }" != "$inner" ]; then
-                inner=${inner# }
-                inner=${inner% }
-              fi
-              ;;
-          esac
+          nl=$RM_NL
+          rm_code_padl=0
+          rm_code_padr=0
+          rm_padfirst=${inner%"${inner#?}"}
+          rm_padlast=${inner#"${inner%?}"}
+          if { [ "$rm_padfirst" = "$sp" ] || [ "$rm_padfirst" = "$nl" ]; } &&
+            { [ "$rm_padlast" = "$sp" ] || [ "$rm_padlast" = "$nl" ]; }; then
+            # the "not all spaces" test needs the flattened content
+            rm_padflat=$inner
+            case "$inner" in
+              *"$nl"*) rm_padflat=$(printf '%s' "$inner" | tr "$nl" ' ') ;;
+            esac
+            case "$rm_padflat" in
+              *[!$sp]*)
+                rm_code_padl=1
+                rm_code_padr=1
+                if [ "$rm_padfirst" = "$sp" ]; then inner=${inner# }; fi
+                if [ "$rm_padlast" = "$sp" ]; then inner=${inner% }; fi
+                ;;
+            esac
+          fi
           rm_code_inner=$(rm_escape "$inner" "$OB")
+          rm_code_rlen=$rlen
           return 0
         fi
         scan=$run
@@ -481,6 +501,9 @@ provide-module render-markdown %{
               eval "rm_cs$rm_code_n=$pos"
               eval "rm_ce$rm_code_n=$((pos + rm_code_len))"
               eval "rm_ci$rm_code_n=\$rm_code_inner"
+              eval "rm_cr$rm_code_n=\$rm_code_rlen"
+              eval "rm_cpl$rm_code_n=\$rm_code_padl"
+              eval "rm_cpr$rm_code_n=\$rm_code_padr"
             fi
             pos=$((pos + rm_code_len))
             str=$rm_code_after
@@ -607,7 +630,7 @@ provide-module render-markdown %{
       len=${#1}
       i=0
       while [ "$i" -lt "$len" ]; do
-        eval "rm_eattr$i=0; rm_eskip$i=0"
+        eval "rm_eattr$i=0; rm_eskip$i=0; rm_einc$i=0"
         i=$((i + 1))
       done
       for span in $RM_EMP_SPANS; do
@@ -659,34 +682,416 @@ provide-module render-markdown %{
     }
 
     # render line bytes [start,end) as block markup: drop used markers and
-    # backticks, emit the union emphasis faces, and render code spans
+    # backticks, emit the union emphasis faces, and render code spans.  A code
+    # span that ends past $to (one that crosses a line break, when the caller
+    # clips a span to its line) has no usable pre-rendered inner, so its
+    # content bytes carry rm_einc and are rendered in place.
     rm_render_block_region() { # $1 = start, $2 = end
       from=$1
       to=$2
       out=
       attr=0
+      incode=0
       i=$from
       while [ "$i" -lt "$to" ]; do
         eval "ce=\$rm_ecode$i"
-        if [ -n "$ce" ]; then
+        if [ -n "$ce" ] && [ "$ce" -le "$to" ]; then
           eval "inner=\$rm_ecodeinner$i"
           out="$out$kak_opt_render_markdown_inline_code$inner"
           if [ "$attr" -ne 0 ]; then out="$out$(rm_face_mask "$attr")"; fi
           i=$ce
           continue
         fi
+        eval "inc=\$rm_einc$i"
+        if [ "$inc" -ne "$incode" ]; then
+          if [ "$inc" -eq 1 ]; then
+            out="$out$kak_opt_render_markdown_inline_code"
+          elif [ "$attr" -ne 0 ]; then
+            out="$out$(rm_face_mask "$attr")"
+          fi
+          incode=$inc
+        fi
         eval "sk=\$rm_eskip$i"
         if [ "$sk" -eq 0 ]; then
           eval "a=\$rm_eattr$i"
-          if [ "$a" -ne "$attr" ]; then
+          if [ "$incode" -eq 1 ]; then
+            # inside a crossing code span: the code face wins, and the content
+            # is escaped like rm_code_find's inner text
             attr=$a
-            if [ "$attr" -ne 0 ]; then out="$out$(rm_face_mask "$attr")"; fi
+            eval "ch=\$rm_echar$i"
+            out="$out$(rm_escape "$ch" "$OB")"
+          else
+            if [ "$a" -ne "$attr" ]; then
+              attr=$a
+              if [ "$attr" -ne 0 ]; then out="$out$(rm_face_mask "$attr")"; fi
+            fi
+            eval "out=\"\$out\$rm_echar$i\""
           fi
-          eval "out=\"\$out\$rm_echar$i\""
         fi
         i=$((i + 1))
       done
       printf '%s' "$out"
+    }
+
+    # split the block prefix off $1: leading whitespace, blockquote markers
+    # (each with its optional space) and continuation indent.  Sets rm_cstart
+    # (prefix length in bytes), rm_cdepth (number of blockquote markers) and
+    # rm_cbody (the rest of the line), so a range starting at the content never
+    # covers a quote marker or a list item's indent.
+    rm_content_start() {
+      rm_cstr=$1
+      rm_cstart=0
+      rm_cdepth=0
+      while [ -n "$rm_cstr" ]; do
+        rm_cc=${rm_cstr%"${rm_cstr#?}"}
+        case "$rm_cc" in
+          '>')
+            rm_cdepth=$((rm_cdepth + 1))
+            rm_cstr=${rm_cstr#?}
+            rm_cstart=$((rm_cstart + 1))
+            rm_cc=${rm_cstr%"${rm_cstr#?}"}
+            if [ "$rm_cc" = ' ' ]; then
+              rm_cstr=${rm_cstr#?}
+              rm_cstart=$((rm_cstart + 1))
+            fi
+            ;;
+          [![:space:]])
+            break
+            ;;
+          *)
+            rm_cstr=${rm_cstr#?}
+            rm_cstart=$((rm_cstart + 1))
+            ;;
+        esac
+      done
+      rm_cbody=$rm_cstr
+    }
+
+    # split the current paragraph ($s, already chomped) into per-line records:
+    #   rm_pn        line count
+    #   rm_pline$j   buffer line number
+    #   rm_plen$j    line length in bytes
+    #   rm_pel$j     the line text
+    #   rm_poff$j    byte offset of the line start in $s
+    #   rm_pstart$j  byte offset of the line's content (see rm_content_start)
+    #   rm_pdirty$j  1 when the line is consumed, inside a code fence or
+    #                outside the rendered band: such a line interrupts the
+    #                paragraph, so it is never parsed with its neighbours
+    #   rm_pbreak$j  1 when the line starts a new block (a list item, or a
+    #                blockquote marker at a different depth): it starts a fresh
+    #                run but is parsed with the lines that follow it
+    rm_para_split() {
+      nl=$RM_NL
+      rm_pn=0
+      rm_poff=0
+      rm_pcurline=$(rm_line)
+      rest=$s
+      rm_pdepth=0
+      # the paragraph object widens each hit to the whole paragraph, which can
+      # run past the band _render-markdown-select picked, so clamp to it
+      rm_pband=${kak_opt__render_markdown_select_range:-}
+      rm_pfrom=
+      rm_pto=
+      case "$rm_pband" in
+        *,*)
+          rm_pfrom=${rm_pband%%.*}
+          rm_pbot=${rm_pband#*,}
+          rm_pto=${rm_pbot%%.*}
+          ;;
+      esac
+      while :; do
+        case "$rest" in
+          *"$nl"*)
+            rm_pcur=${rest%%$nl*}
+            rest=${rest#*$nl}
+            ;;
+          *)
+            rm_pcur=$rest
+            rest=
+            ;;
+        esac
+        rm_pn=$((rm_pn + 1))
+        eval "rm_pline$rm_pn=$rm_pcurline"
+        eval "rm_plen$rm_pn=\${#rm_pcur}"
+        eval "rm_pel$rm_pn=\$rm_pcur"
+        eval "rm_poff$rm_pn=$rm_poff"
+        rm_content_start "$rm_pcur"
+        eval "rm_pstart$rm_pn=$(($rm_poff + rm_cstart))"
+        # A list item or a quote marker that changes the quote depth starts a
+        # new block, so it must not pair its markers with the previous line.
+        # A line without a quote marker after one is a lazy continuation and
+        # stays in the same paragraph (CommonMark).  The marker forms mirror
+        # _render-markdown-match-lists: keep the two in sync.
+        rm_pbreak=0
+        rm_pitem=0
+        case "$rm_cbody" in
+          [-*+][[:space:]]*) rm_pitem=1 ;;
+          *)
+            rm_ptok=${rm_cbody%%[[:space:]]*}
+            case "$rm_ptok" in
+              *. | *')')
+                rm_pnum=${rm_ptok%?}
+                case "$rm_pnum" in
+                  '' | *[!0-9]*) ;;
+                  *) rm_pitem=1 ;;
+                esac
+                ;;
+            esac
+            ;;
+        esac
+        if [ "$rm_pn" -gt 1 ] &&
+          { [ "$rm_pitem" -eq 1 ] ||
+            { [ "$rm_cdepth" -gt 0 ] && [ "$rm_cdepth" -ne "$rm_pdepth" ]; }; }; then
+          rm_pbreak=1
+        fi
+        rm_pdepth=$rm_cdepth
+        eval "rm_pbreak$rm_pn=$rm_pbreak"
+        rm_pd=0
+        case " $kak_opt__render_markdown_consumed_lines " in
+          *" $rm_pcurline "*) rm_pd=1 ;;
+        esac
+        if [ "$rm_pd" -eq 0 ] && rm_in_fence_at "$rm_pcurline" "$((rm_cstart + 1))"; then
+          rm_pd=1
+        fi
+        # A fence marker line is dirty too, so its backticks never pair with
+        # the closing run.  This is done here, not through the global
+        # consumed-line list, because other matchers (setext) legitimately
+        # read a paragraph that starts on a fence line.
+        if [ "$rm_pd" -eq 0 ]; then
+          for rm_fd in $kak_opt__render_markdown_fence_starts $kak_opt__render_markdown_fence_ends; do
+            case "$rm_fd" in
+              "${rm_pcurline}."*) rm_pd=1; break ;;
+            esac
+          done
+        fi
+        if [ -n "$rm_pfrom" ] &&
+          { [ "$rm_pcurline" -lt "$rm_pfrom" ] || [ "$rm_pcurline" -gt "$rm_pto" ]; }; then
+          rm_pd=1
+        fi
+        eval "rm_pdirty$rm_pn=$rm_pd"
+        rm_poff=$((rm_poff + ${#rm_pcur} + 1))
+        rm_pcurline=$((rm_pcurline + 1))
+        [ -n "$rest" ] || break
+      done
+    }
+
+    # parse and emit every run of plain lines in the current paragraph.  A run
+    # is parsed as one text, so a marker opened on one line is paired with one
+    # on another; the spans are then sliced per line (replace-ranges cannot
+    # cross a line break).  The loop variables are rm_-prefixed because
+    # rm_para_run and the parser reuse the short names.
+    rm_para_pass() {
+      rm_pj=1
+      while [ "$rm_pj" -le "$rm_pn" ]; do
+        eval "rm_pd=\$rm_pdirty$rm_pj"
+        if [ "$rm_pd" -eq 1 ]; then
+          rm_pj=$((rm_pj + 1))
+          continue
+        fi
+        rm_pk=$rm_pj
+        while [ "$rm_pk" -lt "$rm_pn" ]; do
+          rm_pnext=$((rm_pk + 1))
+          eval "rm_pd=\$rm_pdirty$rm_pnext"
+          [ "$rm_pd" -eq 0 ] || break
+          eval "rm_pb=\$rm_pbreak$rm_pnext"
+          [ "$rm_pb" -eq 0 ] || break
+          rm_pk=$rm_pnext
+        done
+        rm_para_run "$rm_pj" "$rm_pk"
+        rm_pj=$((rm_pk + 1))
+      done
+    }
+
+    # map a run-relative offset to its line record: sets rm_mlj (line record
+    # index), rm_mbase (line start offset), rm_mlen (line length), rm_mstart
+    # (content start offset) and rm_mline (buffer line number)
+    rm_para_line_of() {
+      rm_mlo=1
+      rm_mhi=$rm_pn
+      while [ "$rm_mlo" -le "$rm_mhi" ]; do
+        rm_mlj=$(((rm_mlo + rm_mhi) / 2))
+        eval "b=\$rm_poff$rm_mlj"
+        b=$((b - rm_pbase))
+        eval "l=\$rm_plen$rm_mlj"
+        if [ "$1" -lt "$b" ]; then
+          rm_mhi=$((rm_mlj - 1))
+        elif [ "$1" -ge $((b + l)) ]; then
+          rm_mlo=$((rm_mlj + 1))
+        else
+          rm_mbase=$b
+          rm_mlen=$l
+          eval "s=\$rm_pstart$rm_mlj"
+          rm_mstart=$((s - rm_pbase))
+          eval "rm_mline=\$rm_pline$rm_mlj"
+          return 0
+        fi
+      done
+      return 1
+    }
+
+    # emit an emphasis span, sliced so that every range stays on one line
+    rm_para_emit_span() { # $1 = span start, $2 = span end
+      from=$1
+      to=$2
+      rm_para_line_of "$from" || return 0
+      rm_mfirst=$rm_mlj
+      rm_para_line_of "$((to - 1))" || return 0
+      rm_mlast=$rm_mlj
+      j=$rm_mfirst
+      while [ "$j" -le "$rm_mlast" ]; do
+        eval "b=\$rm_poff$j"
+        b=$((b - rm_pbase))
+        eval "l=\$rm_plen$j"
+        end=$((b + l))
+        eval "s=\$rm_pstart$j"
+        s=$((s - rm_pbase))
+        lo=$from
+        [ "$lo" -lt "$s" ] && lo=$s
+        hi=$to
+        [ "$hi" -gt "$end" ] && hi=$end
+        if [ "$lo" -lt "$hi" ]; then
+          eval "ln=\$rm_pline$j"
+          rm_emit_desc "$ln.$((lo - b + 1)),$ln.$((hi - b))" '' \
+            "$(rm_render_block_region "$lo" "$hi")"
+        fi
+        j=$((j + 1))
+      done
+    }
+
+    # emit a code span that is not inside an emphasis span: one range per line,
+    # each carrying only that line's part of the content
+    rm_para_emit_code() { # $1 = span start, $2 = span end (backticks included)
+      cstart=$1
+      cend=$2
+      eval "craws=\$rm_ecs$cstart"
+      eval "crawe=\$rm_ece$cstart"
+      rm_para_line_of "$cstart" || return 0
+      firstj=$rm_mlj
+      rm_para_line_of "$((cend - 1))" || return 0
+      if [ "$rm_mlj" -eq "$firstj" ]; then
+        eval "ctext=\$rm_ecodeinner$cstart"
+        rm_emit_desc "$rm_mline.$((cstart - rm_mbase + 1)),$rm_mline.$((cend - rm_mbase))" '' \
+          "$kak_opt_render_markdown_inline_code$ctext"
+        return 0
+      fi
+      lastj=$rm_mlj
+      j=$firstj
+      while [ "$j" -le "$lastj" ]; do
+        eval "b=\$rm_poff$j"
+        b=$((b - rm_pbase))
+        eval "l=\$rm_plen$j"
+        end=$((b + l))
+        eval "s=\$rm_pstart$j"
+        s=$((s - rm_pbase))
+        lo=$cstart
+        [ "$lo" -lt "$s" ] && lo=$s
+        hi=$cend
+        [ "$hi" -gt "$end" ] && hi=$end
+        clo=$craws
+        [ "$clo" -lt "$lo" ] && clo=$lo
+        chi=$crawe
+        [ "$chi" -gt "$hi" ] && chi=$hi
+        if [ "$lo" -lt "$hi" ]; then
+          raw=
+          k=$clo
+          while [ "$k" -lt "$chi" ]; do
+            eval "raw=\"\$raw\$rm_echar$k\""
+            k=$((k + 1))
+          done
+          eval "ln=\$rm_pline$j"
+          rm_emit_desc "$ln.$((lo - b + 1)),$ln.$((hi - b))" '' \
+            "$kak_opt_render_markdown_inline_code$(rm_escape "$raw" "$OB")"
+        fi
+        j=$((j + 1))
+      done
+    }
+
+    # parse one run of lines [$1,$2] of the paragraph and emit its ranges
+    rm_para_run() {
+      nl=$RM_NL
+      txt=
+      j=$1
+      while [ "$j" -le "$2" ]; do
+        eval "l=\$rm_pel$j"
+        txt="$txt$l$nl"
+        j=$((j + 1))
+      done
+      txt=${txt%"$nl"}
+      eval "rm_pbase=\$rm_poff$1"
+      rm_emphasis_parse "$txt"
+      rm_emphasis_attrs "$txt"
+      i=0
+      rest=$txt
+      while [ -n "$rest" ]; do
+        ch=${rest%"${rest#?}"}
+        rest=${rest#?}
+        eval "rm_echar$i=\$ch"
+        eval "rm_ecode$i=; rm_etop$i=; rm_esolo$i="
+        i=$((i + 1))
+      done
+      # one range per top-level span: nested spans render inside a parent
+      for span in $RM_EMP_SPANS; do
+        rm_span_split "$span"
+        span_start=$mstart
+        span_end=$mend
+        top=1
+        for other in $RM_EMP_SPANS; do
+          [ "$other" = "$span" ] && continue
+          rm_span_split "$other"
+          if [ "$mstart" -le "$span_start" ] && [ "$mend" -ge "$span_end" ] &&
+            { [ "$mstart" -lt "$span_start" ] || [ "$mend" -gt "$span_end" ]; }; then
+            top=0
+            break
+          fi
+        done
+        if [ "$top" -eq 1 ]; then eval "rm_etop$span_start=$span_end"; fi
+      done
+      # code spans drop their backticks and, outside every span, get their own
+      # range; their content bytes are flagged so a span clipped to one line
+      # can still render the part of a crossing span that lands on it
+      ci=1
+      while [ "$ci" -le "$rm_code_n" ]; do
+        eval "cs=\$rm_cs$ci; ce=\$rm_ce$ci; ctext=\$rm_ci$ci; cr=\$rm_cr$ci"
+        eval "cpl=\$rm_cpl$ci; cpr=\$rm_cpr$ci"
+        eval "rm_ecode$cs=\$ce; rm_ecodeinner$cs=\$ctext"
+        eval "rm_ecs$cs=$((cs + cr + cpl)); rm_ece$cs=$((ce - cr - cpr))"
+        k=$cs
+        while [ "$k" -lt $((cs + cr)) ]; do
+          eval "rm_eskip$k=1"
+          k=$((k + 1))
+        done
+        k=$((ce - cr))
+        while [ "$k" -lt "$ce" ]; do
+          eval "rm_eskip$k=1"
+          k=$((k + 1))
+        done
+        # the stripped padding is concealed inside the range but not rendered
+        if [ "$cpl" -eq 1 ]; then eval "rm_eskip$((cs + cr))=1"; fi
+        if [ "$cpr" -eq 1 ]; then eval "rm_eskip$((ce - cr - 1))=1"; fi
+        k=$((cs + cr))
+        while [ "$k" -lt $((ce - cr)) ]; do
+          eval "rm_einc$k=1"
+          k=$((k + 1))
+        done
+        inside=0
+        for span in $RM_EMP_SPANS; do
+          rm_span_split "$span"
+          if [ "$cs" -ge "$mstart" ] && [ "$ce" -le "$mend" ]; then
+            inside=1
+            break
+          fi
+        done
+        if [ "$inside" -eq 0 ]; then eval "rm_esolo$cs=$ce"; fi
+        ci=$((ci + 1))
+      done
+      i=0
+      while [ "$i" -lt "${#txt}" ]; do
+        eval "te=\$rm_etop$i"
+        if [ -n "$te" ]; then rm_para_emit_span "$i" "$te"; fi
+        eval "se=\$rm_esolo$i"
+        if [ -n "$se" ]; then rm_para_emit_code "$i" "$se"; fi
+        i=$((i + 1))
+      done
     }
 
     # render inline markdown spans in heading content as face markup: a span
@@ -1224,6 +1629,10 @@ provide-module render-markdown %{
           done
           # no plain paragraph line directly above the underline: not a setext
           [ "$first_row" -le "$rows" ] || return 0
+          # The underline itself must not be inside a code fence: a "===" or
+          # "---" line in a fence is content, and its text line is plain, so
+          # the suffix scan above would not have stopped it.
+          if rm_in_fence_at "$(($(rm_line) + rows))" "$ustart"; then return 0; fi
           case "$ubody" in
             =*) face=$kak_opt_render_markdown_heading_1 ;;
             *) face=$kak_opt_render_markdown_heading_2 ;;
@@ -1446,75 +1855,21 @@ provide-module render-markdown %{
           rm_emit "$face" "$content"
           ;;
         emphasis)
-          if rm_consumed; then return 0; fi
-          line=$(rm_line)
-          txt=$kak_selection
-          rm_emphasis_parse "$txt"
-          rm_emphasis_attrs "$txt"
-          i=0
-          rest=$txt
-          while [ -n "$rest" ]; do
-            ch=${rest%"${rest#?}"}
-            rest=${rest#?}
-            eval "rm_echar$i=\$ch"
-            eval "rm_ecode$i=; rm_etop$i=; rm_esolo$i="
-            i=$((i + 1))
-          done
-          # one range per top-level span: nested spans render inside a parent
-          for span in $RM_EMP_SPANS; do
-            rm_span_split "$span"
-            span_start=$mstart
-            span_end=$mend
-            top=1
-            for other in $RM_EMP_SPANS; do
-              [ "$other" = "$span" ] && continue
-              rm_span_split "$other"
-              if [ "$mstart" -le "$span_start" ] && [ "$mend" -ge "$span_end" ] &&
-                { [ "$mstart" -lt "$span_start" ] || [ "$mend" -gt "$span_end" ]; }; then
-                top=0
-                break
-              fi
-            done
-            if [ "$top" -eq 1 ]; then eval "rm_etop$span_start=$span_end"; fi
-          done
-          # code spans drop their backticks and, outside every span, get
-          # their own range
-          ci=1
-          while [ "$ci" -le "$rm_code_n" ]; do
-            eval "cs=\$rm_cs$ci; ce=\$rm_ce$ci; ctext=\$rm_ci$ci"
-            eval "rm_ecode$cs=\$ce; rm_ecodeinner$cs=\$ctext"
-            eval "rm_eskip$cs=1; rm_eskip$((ce - 1))=1"
-            inside=0
-            for span in $RM_EMP_SPANS; do
-              rm_span_split "$span"
-              if [ "$cs" -ge "$mstart" ] && [ "$ce" -le "$mend" ]; then
-                inside=1
-                break
-              fi
-            done
-            if [ "$inside" -eq 0 ]; then eval "rm_esolo$cs=$ce"; fi
-            ci=$((ci + 1))
-          done
-          i=0
-          while [ "$i" -lt "${#txt}" ]; do
-            eval "te=\$rm_etop$i"
-            if [ -n "$te" ]; then
-              rm_emit_desc "$line.$((i + 1)),$line.$te" '' "$(rm_render_block_region "$i" "$te")"
-            fi
-            eval "se=\$rm_esolo$i"
-            if [ -n "$se" ]; then
-              eval "ctext=\$rm_ecodeinner$i"
-              rm_emit_desc "$line.$((i + 1)),$line.$se" '' "$kak_opt_render_markdown_inline_code$ctext"
-            fi
-            i=$((i + 1))
-          done
+          # The matcher widens every marker line to its whole paragraph, so a
+          # span may open on one line and close on a later one.  Each run of
+          # plain lines is parsed as one text and emitted range-per-line.
+          rm_chomp
+          rm_para_split
+          rm_para_pass
           ;;
       esac
     }
   }
 
   # shared per-selection pipeline: skip selections inside a language-tagged
-  # code fence, then classify + emit. $1 = classification kind.
+  # code fence, then classify + emit. $1 = classification kind.  The emphasis
+  # and setext passes are exempt from the whole-selection fence guard: they
+  # widen a hit to the paragraph and test the fence per line instead.
   define-command -hidden _render-markdown-handle -params 1 %{
     set-option global _render_markdown_kind %arg{1}
     evaluate-commands %sh{
@@ -1540,7 +1895,9 @@ provide-module render-markdown %{
       # kak_opt_render_markdown_inline_code kak_opt__render_markdown_debug_file
       # kak_opt_render_markdown_table_separator kak_opt_render_markdown_table_pipe
       # kak_opt__render_markdown_consumed_lines kak_selection
+      # kak_opt__render_markdown_select_range
       # kak_opt__render_markdown_fence_spans
+      # kak_opt__render_markdown_fence_starts kak_opt__render_markdown_fence_ends
       # kak_opt__render_markdown_quote_starts
       # kak_opt__render_markdown_quote_head kak_opt__render_markdown_quote_glyph
       # kak_opt__render_markdown_bullet_head
@@ -1567,7 +1924,12 @@ provide-module render-markdown %{
           kak_selection=$1
           shift
           kak_selection_desc=$desc
-          rm_in_fence && continue
+          # emphasis and setext widen a hit to the whole paragraph, which may
+          # start on a fence line; they test the lines they use per line
+          case "$kind" in
+            emphasis | setext) ;;
+            *) rm_in_fence && continue ;;
+          esac
           render_markdown_classify "$kind"
         done
       ' _ "$kak_opt__render_markdown_sh_lib" \
@@ -1802,16 +2164,18 @@ provide-module render-markdown %{
     }
   }
 
-  # inline spans: each line is parsed by the shell library, which pairs "*",
-  # "_" and "~~" runs with CommonMark's flanking rules and rule of 3 and
-  # renders inline code.  Links are handled by their own matcher.
+  # inline spans: each paragraph is parsed by the shell library, which pairs
+  # "*", "_" and "~~" runs with CommonMark's flanking rules and rule of 3 and
+  # renders inline code.  CommonMark lets a span cross a soft line break, so
+  # every marker line is widened to its paragraph; the classifier then slices
+  # the spans per line.  Links are handled by their own matcher.
   define-command -hidden _render-markdown-match-emphasis %{
     evaluate-commands -draft %{
       _render-markdown-select
       try %{
-        # Only lines containing an emphasis/code marker can emit a range;
-        # skipping the rest avoids classifying plain lines.
-        execute-keys "s^[^\n]*[*_~`][^\n]*$<ret>"
+        # Only paragraphs containing an emphasis/code marker can emit a range;
+        # skipping the rest avoids classifying plain text.
+        execute-keys "s^[^\n]*[*_~`][^\n]*$<ret><a-i>p"
         _render-markdown-handle emphasis
       }
     }
