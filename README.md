@@ -48,7 +48,8 @@ Currently the plugin supports rendering
 - Blockquotes
 - Callouts (`> [!NOTE]`, `> [!TIP]`, `> [!IMPORTANT]`, `> [!WARNING]`, `> [!CAUTION]`)
 - HTML comments (single-line, hidden)
-- Links (inline, reference, mail and autolinks)
+- Links (inline, reference, mail and autolinks; a label renders inline
+  emphasis and code)
 - Strikethroughs
 - Italics
 - Bold text
@@ -167,8 +168,11 @@ intended.
   matched
 - Table cell inline rendering pads with trailing spaces, so cell text that
   contains emphasis is left-aligned rather than preserving interior spacing
-- Links are matched separately from emphasis, so emphasis inside or around a
-  link (`[a *b* c](url)`, `*[a](url)*`) emits overlapping ranges
+- Links are matched separately from emphasis and code spans, so a link keeps
+  its own range: emphasis around it (`*[a](url)*`) is clipped to the text on
+  either side, and a marker with no text to clip to (`**[c](d)**`) is left
+  visible; a code span containing a link loses its code face and keeps its
+  backticks
 - HTML comments are concealed only when they fit on one line; a multi-line
   comment is left as-is
 - A comment on a heading line stays visible (the heading range spans the whole

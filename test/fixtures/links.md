@@ -10,3 +10,10 @@
 - <mailto:user@test.com>
 - <ftp://files.example.com>
 - two <https://a.example> and <https://b.example> links
+- [`spec/`](spec/README.md)
+- [**bold**](bold.md)
+plain *[a](b.md)* and **[c](d.md)** tail
+
+**start
+[a](b.md) mid
+end**

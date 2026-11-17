@@ -144,12 +144,20 @@ set-option -add global _render_markdown_consumed_lines 5" \
 
 kak_selection='[site](https://x)' kak_selection_desc='9.1,9.20'
 check 'web link' \
-  "${pre}'9.1,9.20|{b}W site'" \
+  "${pre}'9.1,9.20|{b}W site'
+set-option -add global _render_markdown_link_spans '9.1,9.20'" \
   "$(run link)"
 
 kak_selection='[http docs](rel.md)' kak_selection_desc='9.1,9.20'
 check 'link whose label mentions http stays a relative link' \
-  "${pre}'9.1,9.20|{b}L http docs'" \
+  "${pre}'9.1,9.20|{b}L http docs'
+set-option -add global _render_markdown_link_spans '9.1,9.20'" \
+  "$(run link)"
+
+kak_selection='[`code`](rel.md)' kak_selection_desc='9.1,9.20'
+check 'link label renders inline code' \
+  "${pre}'9.1,9.20|{b}L {c}code{b}'
+set-option -add global _render_markdown_link_spans '9.1,9.20'" \
   "$(run link)"
 
 kak_selection='`code`' kak_selection_desc='16.1,16.6'
@@ -264,6 +272,10 @@ check 'heading code span' 'a {C}c{H} b' "$(rm_inline 'a `c` b' '{H}')"
 check 'heading strike span' '{H+s}g{H}' "$(rm_inline '~~g~~' '{H}')"
 check 'heading web link' 'z{W}site{H}' "$(rm_inline 'z[site](https://x)' '{H}')"
 check 'heading image' '{I}img{H}' "$(rm_inline '![img](a.png)' '{H}')"
+check 'heading code in a link label' '{W}{C}code{W}{H}' \
+  "$(rm_inline '[`code`](https://x)' '{H}')"
+check 'heading emphasis in a link label' '{W}{W+b}b{W}{H}' \
+  "$(rm_inline '[**b**](https://x)' '{H}')"
 check 'heading mixed spans' 'a{H+b}b{H} c{H+i}d{H}' "$(rm_inline 'a**b** c*d*' '{H}')"
 check 'heading triple marker merges bold and italics' '{H+bi}x{H}' "$(rm_inline '***x***' '{H}')"
 check 'heading intraword strike emphasizes' 'a{H+s}b{H}c' \

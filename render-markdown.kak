@@ -4,6 +4,9 @@ provide-module render-markdown %{
   declare-option -hidden range-specs _render_markdown_ranges
   declare-option -hidden str _render_markdown_kind ''
   declare-option -hidden str-list _render_markdown_consumed_lines ''
+  # spans the link classifier rendered, so the emphasis pass leaves those
+  # bytes alone instead of emitting a range that overlaps the link range
+  declare-option -hidden str-list _render_markdown_link_spans ''
   declare-option -hidden str-list _render_markdown_quote_starts ''
   declare-option -hidden str-list _render_markdown_fence_spans ''
   declare-option -hidden str-list _render_markdown_fence_starts ''
@@ -171,6 +174,12 @@ provide-module render-markdown %{
       rm_qprefix=${rm_parts#*|}
       rm_start=$((${#rm_indent} + ${#rm_qprefix} + 1))
       rm_body=${1#"$rm_indent$rm_qprefix"}
+    }
+
+    # record the current selection as a link span, so the emphasis pass can
+    # leave those bytes to the link range instead of covering them again
+    rm_record_link() {
+      printf "set-option -add global _render_markdown_link_spans '%s'\n" "$kak_selection_desc"
     }
 
     # true when the current selection's line is heading-consumed
@@ -363,17 +372,34 @@ provide-module render-markdown %{
       printf '%s' "$str"
     }
 
+    # append an attribute string to a face spec's attribute token, which ends
+    # at any @background suffix: blue+f + b -> blue+fb, blue + b -> blue+b
+    rm_attr_add() { # $1 = face spec without braces, $2 = attributes
+      case "$1" in
+        *+*) printf '%s%s' "$1" "$2" ;;
+        *) printf '%s+%s' "$1" "$2" ;;
+      esac
+    }
+
+    # face markup for $2 attributes on a face spec inner (no braces),
+    # keeping any @background suffix last: blue+f + b -> {blue+fb},
+    # blue + b -> {blue+b}, blue+f@Default + b -> {blue+fb@Default}
+    rm_face_add() { # $1 = face spec inner, $2 = attributes
+      ob=$OB
+      cb=$CB
+      case "$1" in
+        *@*) printf '%s' "$ob$(rm_attr_add "${1%%@*}" "$2")@${1#*@}$cb" ;;
+        *) printf '%s' "$ob$(rm_attr_add "$1" "$2")$cb" ;;
+      esac
+    }
+
     # face markup for an emphasis bitmask: reset ($3 = 0) or a span on $2
     rm_face_attr() { # $1 = base face, $2 = base inner, $3 = bitmask
       if [ "$3" -eq 0 ]; then
         printf '%s' "$1"
         return
       fi
-      str=$(rm_attr_str "$3")
-      case "$2" in
-        *+*) printf '%s' "{${2%+*}+${2##*+}$str}" ;;
-        *) printf '%s' "{${2}+$str}" ;;
-      esac
+      rm_face_add "$2" "$(rm_attr_str "$3")"
     }
 
     # block-text face for an emphasis bitmask, built from the face options
@@ -929,7 +955,8 @@ provide-module render-markdown %{
       return 1
     }
 
-    # emit an emphasis span, sliced so that every range stays on one line
+    # emit an emphasis span, sliced so that every range stays on one line and
+    # leaves out the bytes of a recorded link, which its own range renders
     rm_para_emit_span() { # $1 = span start, $2 = span end
       from=$1
       to=$2
@@ -949,20 +976,41 @@ provide-module render-markdown %{
         [ "$lo" -lt "$s" ] && lo=$s
         hi=$to
         [ "$hi" -gt "$end" ] && hi=$end
-        if [ "$lo" -lt "$hi" ]; then
-          eval "ln=\$rm_pline$j"
-          rm_emit_desc "$ln.$((lo - b + 1)),$ln.$((hi - b))" '' \
-            "$(rm_render_block_region "$lo" "$hi")"
-        fi
+        eval "ln=\$rm_pline$j"
+        k=$lo
+        while [ "$k" -lt "$hi" ]; do
+          eval "lk=\$rm_elink$k"
+          if [ "$lk" -ne 0 ]; then
+            k=$((k + 1))
+            continue
+          fi
+          seg=$k
+          while [ "$k" -lt "$hi" ]; do
+            eval "lk=\$rm_elink$k"
+            [ "$lk" -eq 0 ] || break
+            k=$((k + 1))
+          done
+          raw=$(rm_render_block_region "$seg" "$k")
+          if [ -n "$raw" ]; then
+            rm_emit_desc "$ln.$((seg - b + 1)),$ln.$((k - b))" '' "$raw"
+          fi
+        done
         j=$((j + 1))
       done
     }
 
     # emit a code span that is not inside an emphasis span: one range per line,
-    # each carrying only that line's part of the content
+    # each carrying only that line's part of the content.  A code span inside a
+    # link label is skipped: the link range renders the label.
     rm_para_emit_code() { # $1 = span start, $2 = span end (backticks included)
       cstart=$1
       cend=$2
+      k=$cstart
+      while [ "$k" -lt "$cend" ]; do
+        eval "lk=\$rm_elink$k"
+        if [ "$lk" -ne 0 ]; then return 0; fi
+        k=$((k + 1))
+      done
       eval "craws=\$rm_ecs$cstart"
       eval "crawe=\$rm_ece$cstart"
       rm_para_line_of "$cstart" || return 0
@@ -1006,6 +1054,42 @@ provide-module render-markdown %{
       done
     }
 
+    # mark the bytes of the run text a recorded link covers, so the emit loop
+    # can leave them to the link range.  $1 = paragraph offset of the text
+    # start; a paragraph offset is a line start plus the byte column.
+    rm_mark_links() { # $1 = run start offset
+      [ -n "$kak_opt__render_markdown_link_spans" ] || return 0
+      for rm_ll in $kak_opt__render_markdown_link_spans; do
+        rm_la=${rm_ll%%,*}
+        rm_lb=${rm_ll##*,}
+        rm_lline=${rm_la%%.*}
+        rm_lcol=${rm_la#*.}
+        rm_rline=${rm_lb%%.*}
+        rm_rcol=${rm_lb#*.}
+        rm_lj=1
+        while [ "$rm_lj" -le "$rm_pn" ]; do
+          eval "rm_lno=\$rm_pline$rm_lj"
+          if [ "$rm_lno" -ge "$rm_lline" ] && [ "$rm_lno" -le "$rm_rline" ]; then
+            eval "rm_loff=\$rm_poff$rm_lj"
+            eval "rm_llen=\$rm_plen$rm_lj"
+            rm_lfrom=1
+            [ "$rm_lno" -eq "$rm_lline" ] && rm_lfrom=$rm_lcol
+            rm_lto=$rm_llen
+            [ "$rm_lno" -eq "$rm_rline" ] && rm_lto=$rm_rcol
+            rm_lk=$((rm_loff + rm_lfrom - 1 - $1))
+            rm_lend=$((rm_loff + rm_lto - $1))
+            [ "$rm_lk" -lt 0 ] && rm_lk=0
+            [ "$rm_lend" -gt "${#txt}" ] && rm_lend=${#txt}
+            while [ "$rm_lk" -lt "$rm_lend" ]; do
+              eval "rm_elink$rm_lk=1"
+              rm_lk=$((rm_lk + 1))
+            done
+          fi
+          rm_lj=$((rm_lj + 1))
+        done
+      done
+    }
+
     # parse one run of lines [$1,$2] of the paragraph and emit its ranges
     rm_para_run() {
       nl=$RM_NL
@@ -1026,9 +1110,10 @@ provide-module render-markdown %{
         ch=${rest%"${rest#?}"}
         rest=${rest#?}
         eval "rm_echar$i=\$ch"
-        eval "rm_ecode$i=; rm_etop$i=; rm_esolo$i="
+        eval "rm_ecode$i=; rm_etop$i=; rm_esolo$i=; rm_elink$i=0"
         i=$((i + 1))
       done
+      rm_mark_links "$rm_pbase"
       # one range per top-level span: nested spans render inside a parent
       for span in $RM_EMP_SPANS; do
         rm_span_split "$span"
@@ -1096,9 +1181,9 @@ provide-module render-markdown %{
 
     # render inline markdown spans in heading content as face markup: a span
     # adds its attribute to the inherited base face and resets to it, so the
-    # whole heading keeps one color (links/code keep their faces).  Spans are
-    # rendered recursively, so nested emphasis and triple markers work; code
-    # and link labels stay literal.  Emphasis runs follow CommonMark's
+    # whole heading keeps one color (links/code keep their faces).  Spans and
+    # link labels are rendered recursively, so nested emphasis, triple markers
+    # and code inside a label work.  Emphasis runs follow CommonMark's
     # left/right-flanking rules ("_" never emphasizes inside a word).
     rm_inline() {
       s=$1
@@ -1190,12 +1275,9 @@ provide-module render-markdown %{
               prev=$(rm_last_char "$d")
               continue
             fi
-            # merge the attribute into the base's attribute token:
-            # {blue+f} + b -> {blue+fb}, {blue} + b -> {blue+b}
-            case "$inside" in
-              *+*) span="{${inside%+*}+${inside##*+}$attr}" ;;
-              *) span="{${inside}+$attr}" ;;
-            esac
+            # merge the attribute into the base's attribute token, keeping
+            # any @background suffix last
+            span=$(rm_face_add "$inside" "$attr")
             out="$out$span$(rm_inline "$inner" "$span")$base"
             s=$rest
             prev=$(rm_last_char "$d")
@@ -1204,7 +1286,8 @@ provide-module render-markdown %{
             case "$s" in
               *\]*)
                 label=${s%%\]*}
-                out="$out$kak_opt_render_markdown_link_image$label$base"
+                on=$kak_opt_render_markdown_link_image
+                out="$out$on$(rm_inline "$label" "$(rm_head "$on")")$base"
                 s=${s#*"$label"]}
                 # drop the (url) part; trailing text after it is kept
                 case "$s" in
@@ -1230,9 +1313,10 @@ provide-module render-markdown %{
                     url=${rest#\(}
                     url=${url%%\)*}
                     case "$url" in
-                      *http*) out="$out$kak_opt_render_markdown_link_web$label$base" ;;
-                      *) out="$out$kak_opt_render_markdown_link_link$label$base" ;;
+                      *http*) on=$kak_opt_render_markdown_link_web ;;
+                      *) on=$kak_opt_render_markdown_link_link ;;
                     esac
+                    out="$out$on$(rm_inline "$label" "$(rm_head "$on")")$base"
                     s=${rest#\("$url"\)}
                     prev=')'
                     ;;
@@ -1842,7 +1926,8 @@ provide-module render-markdown %{
             *"]("*http*) face=$kak_opt_render_markdown_link_web ;;
             *) face=$kak_opt_render_markdown_link_link ;;
           esac
-          rm_emit "$face" "$content"
+          rm_emit "$face" "$(rm_inline "$content" "$(rm_head "$face")")"
+          rm_record_link
           ;;
         link-mail | link-autolink)
           if rm_consumed; then return 0; fi
@@ -1853,6 +1938,7 @@ provide-module render-markdown %{
             *) face=$kak_opt_render_markdown_link_mail ;;
           esac
           rm_emit "$face" "$content"
+          rm_record_link
           ;;
         emphasis)
           # The matcher widens every marker line to its whole paragraph, so a
@@ -1895,6 +1981,7 @@ provide-module render-markdown %{
       # kak_opt_render_markdown_inline_code kak_opt__render_markdown_debug_file
       # kak_opt_render_markdown_table_separator kak_opt_render_markdown_table_pipe
       # kak_opt__render_markdown_consumed_lines kak_selection
+      # kak_opt__render_markdown_link_spans
       # kak_opt__render_markdown_select_range
       # kak_opt__render_markdown_fence_spans
       # kak_opt__render_markdown_fence_starts kak_opt__render_markdown_fence_ends
@@ -2311,6 +2398,7 @@ provide-module render-markdown %{
   define-command -hidden _render-markdown-render %{
     set-option window _render_markdown_bare_ranges
     set-option global _render_markdown_consumed_lines
+    set-option global _render_markdown_link_spans
     set-option global _render_markdown_quote_starts
     # a bare set-option clears these str-list accumulators
     set-option global _render_markdown_fence_spans
