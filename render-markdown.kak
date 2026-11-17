@@ -44,11 +44,11 @@ provide-module render-markdown %{
   declare-option str render_markdown_heading_5 "{magenta+f}    󰲩"
   declare-option str render_markdown_heading_6 "{red+f}     󰲫"
 
-  declare-option str render_markdown_codeblock_start " "
-  # Fence info-string label, drawn after the opening marker; the icon is the
-  # fallback when the language is not in the built-in map (see rm_lang_icon).
+  # Opening fence line: the marker run and its info string become one glyph,
+  # the language's icon or the fallback when it is not in the built-in map
+  # (see rm_lang_icon), followed by the info string.
   declare-option str render_markdown_codeblock_language "{cyan+f}"
-  declare-option str render_markdown_codeblock_language_icon "󰅩"
+  declare-option str render_markdown_codeblock_language_icon ""
   declare-option str render_markdown_codeblock_end " "
 
   declare-option str render_markdown_checkbox_checked "{yellow+f}󰱒 "
@@ -2098,9 +2098,11 @@ provide-module render-markdown %{
             evaluate-commands "set-option -add global _render_markdown_fence_spans '%reg{f}'"
           }
         }
-        # opening and closing fence markers, emitted in one shell pass below.
-        # The marker run is matched with `+ so four-plus-backtick fences are
-        # covered by the same range as three-backtick ones.
+        # opening and closing fence markers.  The marker runs are recorded
+        # (not drawn) so a fence line counts as dirty for the guard; the
+        # opening one is drawn by the label pass below.  The runs are matched
+        # with `+ so four-plus-backtick fences are covered like three-backtick
+        # ones.
         evaluate-commands -itersel -draft %{
           execute-keys "<a-:><a-semicolon><semicolon>xs`+<ret>"
           set-option -add global _render_markdown_fence_starts "%val{selection_desc}"
@@ -2109,46 +2111,42 @@ provide-module render-markdown %{
           execute-keys "<a-:><semicolon>xs`+<ret>"
           set-option -add global _render_markdown_fence_ends "%val{selection_desc}"
         }
-        # Language labels: the opening fence's info string is faced and
-        # prefixed with the language's icon.  The `\K` search narrows the
-        # selection to the info string alone; one shell call per fence (fences
-        # are far rarer than inline elements).
+        # Opening fence line: the marker run and the info string are replaced
+        # by the language's icon (or the fallback icon) and the info string, so
+        # the line carries a single glyph.  The search takes the whole line so a
+        # bare fence still gets a glyph; one shell call per fence (fences are
+        # far rarer than inline elements).
         evaluate-commands -itersel -draft %{
           execute-keys "<a-:><a-semicolon><semicolon>x"
           try %{
-            execute-keys "s`+\h*\K[^`\n][^\n]*<ret>"
+            execute-keys "s`+[^\n]*<ret>"
             evaluate-commands %sh{
               # kak_selection_desc kak_opt__render_markdown_debug_file
               # kak_opt_render_markdown_codeblock_language
               # kak_opt_render_markdown_codeblock_language_icon
               eval "$kak_opt__render_markdown_sh_lib"
+              # the selection is the marker run plus the info string
               info=$kak_selection
-              # drop trailing blanks the regex may have captured
+              while [ "${info#\`}" != "$info" ]; do info=${info#\`}; done
+              case "$info" in
+                [[:space:]]*) info=${info#"${info%%[![:space:]]*}"} ;;
+              esac
               info=${info%"${info##*[![:space:]]}"}
-              if [ -n "$info" ]; then
-                lang=${info%%[[:space:]]*}
-                icon=$(rm_lang_icon "$lang")
-                rm_emit "$kak_opt_render_markdown_codeblock_language" "$icon $info"
-              fi
+              icon=$(rm_lang_icon "${info%%[[:space:]]*}")
+              rm_emit "$kak_opt_render_markdown_codeblock_language" "$icon${info:+ $info}"
             }
           }
         }
         evaluate-commands %sh{
           eval "$kak_opt__render_markdown_sh_lib"
-          emit_fence_ranges() { # $1 = marker ranges, $2 = escaped face
-            quoted=$(rm_quote "$2")
-            for d in $1; do
-              printf "set-option -add window _render_markdown_bare_ranges '%s|%s'\n" "$d" "$quoted"
-              if [ -n "$kak_opt__render_markdown_debug_file" ]; then
-                printf '%s\n' "$d|$2" >>"$kak_opt__render_markdown_debug_file"
-              fi
-            done
-          }
-          # the face is the same for every fence, so escape it once
-          start_face=$(rm_escape "$kak_opt_render_markdown_codeblock_start" '|')
           end_face=$(rm_escape "$kak_opt_render_markdown_codeblock_end" '|')
-          emit_fence_ranges "$kak_opt__render_markdown_fence_starts" "$start_face"
-          emit_fence_ranges "$kak_opt__render_markdown_fence_ends" "$end_face"
+          end_quoted=$(rm_quote "$end_face")
+          for d in $kak_opt__render_markdown_fence_ends; do
+            printf "set-option -add window _render_markdown_bare_ranges '%s|%s'\n" "$d" "$end_quoted"
+            if [ -n "$kak_opt__render_markdown_debug_file" ]; then
+              printf '%s\n' "$d|$end_face" >>"$kak_opt__render_markdown_debug_file"
+            fi
+          done
         }
       }
     }

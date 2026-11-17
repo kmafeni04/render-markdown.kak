@@ -26,3 +26,6 @@ print("hi")
 ``` lua
 local y = 2
 ```
+```	lua
+local z = 3
+```

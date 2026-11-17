@@ -41,7 +41,7 @@ screen).
 
 Currently the plugin supports rendering
 - Headings (ATX, setext, including multi-line setext paragraphs)
-- Codeblocks (backtick fences of three to six backticks; the info string is rendered as a language label)
+- Codeblocks (backtick fences of three to six backticks; the opening fence becomes the language's icon, or a generic icon when it has none, followed by the info string)
 - Checkboxes (`[x]`, `[ ]`, GitLab `[~]`, Obsidian `[/]` and `[-]`)
 - List markers (bullets, and ordered numbers kept in place)
 - Thematic breaks (`---`, `***`, `___`, and spaced forms such as `- - -`)
@@ -81,8 +81,8 @@ top of `render-markdown.kak`); set one to change that rendering:
 | Option | Controls |
 | --- | --- |
 | `render_markdown_heading_1` … `render_markdown_heading_6` | ATX/setext heading markers and faces |
-| `render_markdown_codeblock_start`, `render_markdown_codeblock_end` | Opening and closing fence markers |
-| `render_markdown_codeblock_language`, `render_markdown_codeblock_language_icon` | Fence info-string face and the fallback language icon |
+| `render_markdown_codeblock_end` | Closing fence marker |
+| `render_markdown_codeblock_language`, `render_markdown_codeblock_language_icon` | Opening fence label face and the generic language icon (`render_markdown_codeblock_start` is gone: the opening fence is a single glyph) |
 | `render_markdown_checkbox_checked`, `render_markdown_checkbox_unchecked`, `render_markdown_checkbox_inapplicable`, `render_markdown_checkbox_in_progress`, `render_markdown_checkbox_cancelled` | Task-list checkboxes (`[x]`/`[ ]` plus GitLab `[~]` and Obsidian `[/]`/`[-]`) |
 | `render_markdown_bullet`, `render_markdown_bullet_alt` | Unordered bullet markers, cycled by nesting depth (`indentwidth` steps, blockquote prefixes ignored); ordered numbers reuse the first's face |
 | `render_markdown_horizontal_rule` | Thematic break line |
@@ -95,7 +95,9 @@ top of `render-markdown.kak`); set one to change that rendering:
 
 A small built-in language table (`rm_lang_icon`) seeds icons for common
 languages (`lua`, `python`, `javascript`, `sh`, `markdown`, …); any other info
-string falls back to `render_markdown_codeblock_language_icon`.
+string, and a bare fence with no info string, draws
+`render_markdown_codeblock_language_icon` instead.  Either way the opening
+fence is a single glyph.
 
 Rendering is toggled with `render-markdown-enable`, `render-markdown-disable`
 and `render-markdown-toggle`. `render_markdown_margin` (default 24) is not a
@@ -155,37 +157,39 @@ When a golden changes, review the diff and re-bless only if the change is
 intended.
 
 ## Known Issues
-- The range under the cursor is left in source form so you can see and edit it
-  (Kakoune does not replace a range containing the cursor; expected, not a bug)
-- YAML front matter is recognised by a heuristic (a leading `---` line with a
-  closing `---` before the first blank line), not by the CommonMark spec;
-  without the closing delimiter the block is left as ordinary Markdown
+Each entry is a renderer limit, with its reason.
+- The range under the cursor stays in source form so you can see and edit
+  it (Kakoune does not replace a range containing the cursor; expected, not a
+  bug)
+- YAML front matter is recognised by a heuristic, not the CommonMark spec: a
+  leading `---` line with a closing `---` before the first blank line;
+  without it the block is left as ordinary Markdown
 - Setext headings need the underline in the same container as the paragraph:
   a quote paragraph above a bare `---` stays a quote plus a rule, and a list
   item directly above `---` stays a list plus a rule
-- Backtick fences longer than six backticks are not supported: the opening and
-  closing runs must be the same length, and only lengths three through six are
-  matched
-- Table cell inline rendering pads with trailing spaces, so cell text that
-  contains emphasis is left-aligned rather than preserving interior spacing
-- Links are matched separately from emphasis and code spans, so a link keeps
-  its own range: emphasis around it (`*[a](url)*`) is clipped to the text on
-  either side, and a marker with no text to clip to (`**[c](d)**`) is left
-  visible; a code span containing a link loses its code face and keeps its
+- Backtick fences longer than six backticks are not supported, because the
+  opening and closing runs must match in length and only lengths three through
+  six are matched
+- Table cells with inline markup are padded with trailing spaces, so the
+  text is left-aligned instead of keeping its interior spacing
+- Links are matched apart from emphasis and code spans, so a link keeps its
+  own range: emphasis around it (`*[a](url)*`) is clipped to the text on
+  either side, and a marker with nothing to clip to (`**[c](d)**`) stays
+  visible. A code span containing a link loses its code face and keeps its
   backticks
-- HTML comments are concealed only when they fit on one line; a multi-line
+- HTML comments are concealed only when they fit on one line, so a multi-line
   comment is left as-is
 - A comment on a heading line stays visible (the heading range spans the whole
   line), and a line carrying a comment is consumed, so its other inline markup
   is not rendered
-- Callouts are recognised on any line of a blockquote, not only its first line
-  as GitHub and GitLab require; a later `> [!NOTE]` still renders
-- Backslash escaping covers only `*`, `_`, `~` and `` ` `` in the inline
-  parser; other CommonMark escapes such as `\#` stay literal, and inline
-  rendering in headings and table cells does not process escapes at all
-- While `render_markdown_raw_in_insert` is on (the default), running the
-  toggle from insert mode re-enables rendering instead of disabling it,
-  because insert mode has already removed the highlighter
+- Callouts are recognised on any blockquote line, not only the first as
+  GitHub and GitLab require, so a later `> [!NOTE]` still renders
+- The inline parser escapes only `*`, `_`, `~` and `` ` ``; other CommonMark
+  escapes such as `\#` stay literal, and inline rendering in headings and
+  table cells does not process escapes at all
+- While `render_markdown_raw_in_insert` is on (the default), running the toggle
+  from insert mode re-enables rendering instead of disabling it, because insert
+  mode has already removed the highlighter
 
 ## Reference
 - https://github.com/MeanderingProgrammer/render-markdown.nvim
