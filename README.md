@@ -167,6 +167,8 @@ Each entry is a renderer limit, with its reason.
 - Setext headings need the underline in the same container as the paragraph:
   a quote paragraph above a bare `---` stays a quote plus a rule, and a list
   item directly above `---` stays a list plus a rule
+- A setext underline must also end its block: a `---` with paragraph text
+  below it stays a rule, where the spec reads a heading above a paragraph
 - Backtick fences longer than six backticks are not supported, because the
   opening and closing runs must match in length and only lengths three through
   six are matched

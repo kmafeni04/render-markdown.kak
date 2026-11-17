@@ -1664,7 +1664,7 @@ provide-module render-markdown %{
           text=${s%$nl*}
           rm_line_split "$underline"
           uprefix=$rm_qprefix
-          ubody=$(printf '%s' "$rm_body" | sed 's/^[[:space:]]*//')
+          ubody=$(printf '%s' "$rm_body" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
           ustart=$rm_start
           # Split the text into lines, then take the longest suffix of plain
           # paragraph lines immediately before the underline.  A block
@@ -1717,7 +1717,13 @@ provide-module render-markdown %{
           # "---" line in a fence is content, and its text line is plain, so
           # the suffix scan above would not have stopped it.
           if rm_in_fence_at "$(($(rm_line) + rows))" "$ustart"; then return 0; fi
+          # The underline must be the last line of the block.  A "---" with
+          # more paragraph lines after it is a thematic break, and the
+          # paragraph object then ends on a text line, not on the underline;
+          # treating that text as the underline hides it and heads the lines
+          # above it.  Only a bare run of marker characters can be an underline.
           case "$ubody" in
+            '' | *[!=-]*) return 0 ;;
             =*) face=$kak_opt_render_markdown_heading_1 ;;
             *) face=$kak_opt_render_markdown_heading_2 ;;
           esac
